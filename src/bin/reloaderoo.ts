@@ -17,6 +17,7 @@ import { Command } from 'commander';
 import { existsSync, accessSync, constants, readFileSync } from 'fs';
 import { resolve, isAbsolute, dirname } from 'path';
 import { MCPProxy } from '../mcp-proxy.js';
+import { DebugProxy } from '../debug-proxy.js';
 import { Config, validateCommand, getEnvironmentConfig } from '../config.js';
 import { logger } from '../mcp-logger.js';
 import type { ProxyConfig, LoggingLevel } from '../types.js';
@@ -98,6 +99,7 @@ Examples:
   $ reloaderoo -- node server.js
   $ reloaderoo --log-level debug -- python mcp_server.py --port 8080
   $ reloaderoo --working-dir ./src --max-restarts 5 -- npm run serve
+  $ reloaderoo --debug-mode -- node server.js  # Run as MCP inspection server
   $ reloaderoo info
 
 Environment Variables:
@@ -154,6 +156,10 @@ program
   .option(
     '--dry-run',
     'Validate configuration without starting proxy'
+  )
+  .option(
+    '--debug-mode',
+    'Run as an MCP inspection server instead of a proxy'
   )
   .action(async (options) => {
     try {
@@ -277,12 +283,18 @@ program
       
       // Start the proxy
       if (!options.quiet) {
-        process.stderr.write('Starting reloaderoo...\n');
+        if (options.debugMode) {
+          process.stderr.write('Starting reloaderoo in debug mode (MCP inspection server)...\n');
+        } else {
+          process.stderr.write('Starting reloaderoo...\n');
+        }
         process.stderr.write(`Child: ${childCommand} ${childArgs.join(' ')}\n`);
         process.stderr.write(`Working Directory: ${proxyConfig.workingDirectory}\n`);
       }
       
-      const proxy = new MCPProxy(proxyConfig);
+      const proxy = options.debugMode 
+        ? new DebugProxy(proxyConfig)
+        : new MCPProxy(proxyConfig);
       
       // Handle graceful shutdown
       const shutdown = async (signal: string) => {
