@@ -103,12 +103,13 @@ Examples:
   $ reloaderoo info
 
 Environment Variables:
-  RELOADEROO_LOG_LEVEL      Set default log level
-  RELOADEROO_LOG_FILE       Custom log file path
-  RELOADEROO_RESTART_LIMIT  Default restart limit
-  RELOADEROO_AUTO_RESTART   Enable/disable auto-restart (true/false)
-  RELOADEROO_TIMEOUT        Operation timeout in milliseconds
-  RELOADEROO_CWD            Default working directory`);
+  MCPDEV_PROXY_LOG_LEVEL      Set default log level
+  MCPDEV_PROXY_LOG_FILE       Custom log file path
+  MCPDEV_PROXY_RESTART_LIMIT  Default restart limit
+  MCPDEV_PROXY_AUTO_RESTART   Enable/disable auto-restart (true/false)
+  MCPDEV_PROXY_TIMEOUT        Operation timeout in milliseconds
+  MCPDEV_PROXY_CWD            Default working directory
+  MCPDEV_PROXY_DEBUG_MODE     Enable debug mode (true/false)`);
 
 // Main proxy command with options
 program
@@ -176,6 +177,9 @@ program
       if (Object.keys(envConfig).length > 0 && !options.quiet) {
         process.stderr.write('Loaded configuration from environment variables\n');
       }
+      
+      // Check for debug mode from environment if not set via CLI
+      const isDebugMode = options.debugMode || envConfig.debugMode;
       
       // Parse child command using pass-through syntax (-- child-command [args...])
       const dashIndex = process.argv.indexOf('--');
@@ -247,6 +251,15 @@ program
       // Configure logging
       logger.setLevel(proxyConfig.logLevel as any);
       
+      // Set custom log file if provided via CLI or environment
+      const logFile = options.logFile || envConfig.logFile;
+      if (logFile) {
+        logger.setLogFile(logFile);
+        if (!options.quiet) {
+          process.stderr.write(`Logging to file: ${logFile}\n`);
+        }
+      }
+      
       // Dry run mode - validate and exit
       if (options.dryRun) {
         const validation = config.validateConfig(proxyConfig);
@@ -283,7 +296,7 @@ program
       
       // Start the proxy
       if (!options.quiet) {
-        if (options.debugMode) {
+        if (isDebugMode) {
           process.stderr.write('Starting reloaderoo in debug mode (MCP inspection server)...\n');
         } else {
           process.stderr.write('Starting reloaderoo...\n');
@@ -292,7 +305,7 @@ program
         process.stderr.write(`Working Directory: ${proxyConfig.workingDirectory}\n`);
       }
       
-      const proxy = options.debugMode 
+      const proxy = isDebugMode 
         ? new DebugProxy(proxyConfig)
         : new MCPProxy(proxyConfig);
       

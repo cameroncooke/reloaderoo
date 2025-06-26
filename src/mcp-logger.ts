@@ -21,6 +21,7 @@ interface LogMessage {
   level: LogLevel;
   message: string;
   data?: any;
+  source?: string;
 }
 
 class MCPLogger {
@@ -28,10 +29,12 @@ class MCPLogger {
   private currentLevel: LogLevel = 'info';
   private mcpServer: any = null;
   private isServerMode = false;
+  private clientInfo: string = '';
 
   constructor(logFile?: string) {
     this.logFile = logFile || this.getDefaultLogPath();
     this.ensureLogDirectory();
+    this.clientInfo = this.getClientInfo();
   }
 
   /**
@@ -48,53 +51,61 @@ class MCPLogger {
   setLevel(level: LogLevel): void {
     this.currentLevel = level;
   }
+  
+  /**
+   * Set custom log file path
+   */
+  setLogFile(logFile: string): void {
+    this.logFile = logFile;
+    this.ensureLogDirectory();
+  }
 
   /**
    * Log debug message
    */
-  debug(message: string, data?: any): void {
-    this.log('debug', message, data);
+  debug(message: string, data?: any, source?: string): void {
+    this.log('debug', message, data, source);
   }
 
   /**
    * Log info message
    */
-  info(message: string, data?: any): void {
-    this.log('info', message, data);
+  info(message: string, data?: any, source?: string): void {
+    this.log('info', message, data, source);
   }
 
   /**
    * Log notice message
    */
-  notice(message: string, data?: any): void {
-    this.log('notice', message, data);
+  notice(message: string, data?: any, source?: string): void {
+    this.log('notice', message, data, source);
   }
 
   /**
    * Log warning message
    */
-  warn(message: string, data?: any): void {
-    this.log('warning', message, data);
+  warn(message: string, data?: any, source?: string): void {
+    this.log('warning', message, data, source);
   }
 
   /**
    * Log error message
    */
-  error(message: string, data?: any): void {
-    this.log('error', message, data);
+  error(message: string, data?: any, source?: string): void {
+    this.log('error', message, data, source);
   }
 
   /**
    * Log critical message
    */
-  critical(message: string, data?: any): void {
-    this.log('critical', message, data);
+  critical(message: string, data?: any, source?: string): void {
+    this.log('critical', message, data, source);
   }
 
   /**
    * Main logging method
    */
-  private log(level: LogLevel, message: string, data?: any): void {
+  private log(level: LogLevel, message: string, data?: any, source?: string): void {
     if (!this.shouldLog(level)) {
       return;
     }
@@ -103,7 +114,8 @@ class MCPLogger {
       timestamp: new Date().toISOString(),
       level,
       message,
-      data
+      data,
+      ...(source && { source })
     };
 
     // Always write to file for persistence
@@ -169,14 +181,29 @@ class MCPLogger {
   }
 
   /**
+   * Get client info (parent process and MCP client)
+   */
+  private getClientInfo(): string {
+    try {
+      const ppid = process.ppid;
+      return `PPID:${ppid}`;
+    } catch {
+      return 'PPID:unknown';
+    }
+  }
+
+  /**
    * Format log message for output
    */
   private formatMessage(logMessage: LogMessage): string {
-    const { timestamp, level, message, data } = logMessage;
+    const { timestamp, level, message, data, source } = logMessage;
     const levelUpper = level.toUpperCase().padEnd(8);
+    const pid = `[PID:${process.pid}]`;
+    const client = `[${this.clientInfo}]`;
+    const sourceStr = source ? `[${source.padEnd(12)}] ` : '';
     const dataStr = data ? ` | ${JSON.stringify(data)}` : '';
     
-    return `[${timestamp}] [${levelUpper}] ${message}${dataStr}`;
+    return `[${timestamp}] ${pid} ${client} [${levelUpper}] ${sourceStr}${message}${dataStr}`;
   }
 
   /**

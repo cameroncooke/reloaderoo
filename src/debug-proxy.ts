@@ -10,12 +10,12 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { spawn } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
-  CallToolResult,
-  ErrorCode,
-  McpError
+  CallToolResult
 } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './mcp-logger.js';
 import type { ProxyConfig } from './types.js';
@@ -28,6 +28,7 @@ export class DebugProxy {
   private readonly server: Server;
   private childClient: Client | null = null;
   private childTransport: StdioClientTransport | null = null;
+  private childProcess: ChildProcess | null = null;
   private isShuttingDown = false;
   private childServerInfo: any = null;
 
@@ -104,13 +105,26 @@ export class DebugProxy {
       args: this.config.childArgs
     });
 
-    // Create transport and client for child communication
-    // This will spawn the child process automatically
-    this.childTransport = new StdioClientTransport({
-      command: this.config.childCommand,
-      args: this.config.childArgs,
-      env: this.config.environment
+    // CRITICAL FIX: Spawn child process with pipes, NOT inherited stdio
+    // This prevents stdio conflict with debug proxy
+    const childProcess = spawn(this.config.childCommand, this.config.childArgs, {
+      stdio: ['pipe', 'pipe', 'pipe'], // Use pipes instead of inherited stdio
+      env: { ...process.env, ...this.config.environment },
+      cwd: this.config.workingDirectory
     });
+
+    if (!childProcess.stdout || !childProcess.stdin) {
+      throw new Error('Failed to create child process pipes');
+    }
+
+    // Store child process reference for cleanup and stderr access
+    this.childProcess = childProcess;
+
+    // Create custom transport using the spawned process pipes
+    this.childTransport = new StdioClientTransport({
+      reader: childProcess.stdout,
+      writer: childProcess.stdin
+    } as any);
 
     this.childClient = new Client(
       {
@@ -124,6 +138,19 @@ export class DebugProxy {
 
     // Connect to child via stdio
     await this.childClient.connect(this.childTransport);
+
+    // Set up stderr capture from our direct child process reference
+    if (childProcess.stderr) {
+      logger.debug('Setting up stderr capture from child process', undefined, 'RELOADEROO');
+      childProcess.stderr.on('data', (data: Buffer) => {
+        const output = data.toString().trim();
+        if (output) {
+          logger.info(output, undefined, 'CHILD-MCP');
+        }
+      });
+    } else {
+      logger.debug('No stderr available from child process', undefined, 'RELOADEROO');
+    }
 
     // Store server info for later inspection
     // The client doesn't expose server info directly, we'll get it from tools/resources/prompts
@@ -210,6 +237,36 @@ export class DebugProxy {
       this.childTransport = null;
     }
 
+    // Properly terminate the child process
+    if (this.childProcess) {
+      try {
+        logger.debug('Terminating child process', { pid: this.childProcess.pid });
+        
+        // Send SIGTERM first for graceful shutdown
+        this.childProcess.kill('SIGTERM');
+        
+        // Wait a bit for graceful shutdown
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(() => {
+            // Force kill if still running after timeout
+            if (this.childProcess && !this.childProcess.killed) {
+              logger.debug('Force killing child process', { pid: this.childProcess.pid });
+              this.childProcess.kill('SIGKILL');
+            }
+            resolve();
+          }, 5000);
+          
+          this.childProcess?.once('exit', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+        });
+      } catch (error) {
+        logger.debug('Error terminating child process', { error });
+      }
+      this.childProcess = null;
+    }
+
     this.childServerInfo = null;
   }
 
@@ -217,10 +274,10 @@ export class DebugProxy {
    * Setup debug tool handlers
    */
   private setupDebugTools(): void {
-    // List tools - expose all debug inspection tools
+    // List tools - expose debug inspection tools AND child server tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      return {
-        tools: [
+      // Start with debug inspection tools
+      const debugTools = [
           {
             name: 'list_tools',
             description: 'List all tools available in the target MCP server',
@@ -318,7 +375,25 @@ export class DebugProxy {
               required: []
             }
           }
-        ]
+        ];
+
+      // Get child server tools and combine with debug tools
+      let childTools: any[] = [];
+      if (this.childClient) {
+        try {
+          const childResult = await this.childClient.listTools();
+          childTools = childResult.tools || [];
+          logger.debug('Child server supports tools', { count: childTools.length });
+        } catch (error) {
+          logger.debug('Child server does not support tools', { error });
+        }
+      }
+
+      // Combine debug tools and child tools
+      const allTools = [...debugTools, ...childTools];
+      
+      return {
+        tools: allTools
       };
     });
 
@@ -344,12 +419,46 @@ export class DebugProxy {
         case 'ping':
           return this.handlePing();
         default:
-          throw new McpError(
-            ErrorCode.MethodNotFound,
-            `Unknown debug tool: ${name}`
-          );
+          // If it's not a debug tool, proxy to child server
+          return this.proxyToolToChild(name, args);
       }
     });
+  }
+
+  /**
+   * Proxy tool call to child server (for non-debug tools)
+   */
+  private async proxyToolToChild(name: string, args: any): Promise<CallToolResult> {
+    logger.debug(`Proxying tool call: ${name}`, { arguments: args }, 'PROXY-TOOL');
+    
+    if (!this.childClient) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'Error: Child server not connected'
+        }],
+        isError: true
+      };
+    }
+
+    try {
+      const result = await this.childClient.callTool({
+        name,
+        arguments: args || {}
+      });
+      
+      logger.debug(`Tool call completed: ${name}`, undefined, 'PROXY-TOOL');
+      return result as CallToolResult;
+    } catch (error) {
+      logger.debug(`Tool call failed: ${name}`, { error: error instanceof Error ? error.message : 'Unknown error' }, 'PROXY-TOOL');
+      return {
+        content: [{
+          type: 'text',
+          text: `Error calling tool '${name}': ${error instanceof Error ? error.message : 'Unknown error'}`
+        }],
+        isError: true
+      };
+    }
   }
 
   /**

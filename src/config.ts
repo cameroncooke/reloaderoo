@@ -108,7 +108,7 @@ const ENV_VAR_MAPPINGS: Record<string, {
     type: 'string' 
   },
   MCPDEV_PROXY_LOG_FILE: { 
-    configKey: 'logLevel', 
+    configKey: 'logFile', 
     type: 'string' 
   },
   MCPDEV_PROXY_RESTART_LIMIT: { 
@@ -139,6 +139,10 @@ const ENV_VAR_MAPPINGS: Record<string, {
   MCPDEV_PROXY_CWD: { 
     configKey: 'workingDirectory', 
     type: 'string' 
+  },
+  MCPDEV_PROXY_DEBUG_MODE: { 
+    configKey: 'debugMode', 
+    type: 'boolean' 
   }
 };
 

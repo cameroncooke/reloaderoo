@@ -10,7 +10,6 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import {
   // Tools
   ListToolsRequestSchema,
@@ -43,7 +42,6 @@ export class MCPProxy {
   private readonly config: ProxyConfig;
   private readonly server: Server;
   private childClient: Client | null = null;
-  private childProcess: ChildProcessWithoutNullStreams | null = null;
   private childTransport: StdioClientTransport | null = null;
   private isShuttingDown = false;
   private restartInProgress = false;
@@ -120,18 +118,8 @@ export class MCPProxy {
       args: this.config.childArgs
     });
 
-    // Spawn child process
-    this.childProcess = spawn(this.config.childCommand, this.config.childArgs, {
-      cwd: this.config.workingDirectory,
-      env: this.config.environment,
-      stdio: 'pipe'
-    });
-
-    if (!this.childProcess.stdout || !this.childProcess.stdin) {
-      throw new Error('Failed to create child process with stdio pipes');
-    }
-
     // Create transport and client for child communication
+    // This will spawn the child process automatically
     this.childTransport = new StdioClientTransport({
       command: this.config.childCommand,
       args: this.config.childArgs,
@@ -156,6 +144,45 @@ export class MCPProxy {
 
     // Connect to child via stdio
     await this.childClient.connect(this.childTransport);
+
+    // Try to access child process for stderr capture
+    try {
+      // Check if transport exposes stderr stream
+      const transport = this.childTransport as any;
+      if (transport._stderrStream) {
+        logger.debug('Found child stderr stream, setting up capture', undefined, 'RELOADEROO');
+        transport._stderrStream.on('data', (data: Buffer) => {
+          const output = data.toString().trim();
+          if (output) {
+            logger.info(output, undefined, 'CHILD-MCP');
+          }
+        });
+      } else if (transport._process && transport._process.stderr) {
+        logger.debug('Found child process stderr, setting up capture', undefined, 'RELOADEROO');
+        transport._process.stderr.on('data', (data: Buffer) => {
+          const output = data.toString().trim();
+          if (output) {
+            logger.info(output, undefined, 'CHILD-MCP');
+          }
+        });
+      } else if (transport._process) {
+        logger.debug('Found _process property, setting up stderr capture', undefined, 'RELOADEROO');
+        transport._process.stderr.on('data', (data: Buffer) => {
+          const output = data.toString().trim();
+          if (output) {
+            logger.info(output, undefined, 'CHILD-MCP');
+          }
+        });
+      } else {
+        logger.debug('No stderr access available from transport', {
+          hasStderrStream: !!transport._stderrStream,
+          hasProcess: !!transport._process,
+          transportKeys: Object.keys(transport)
+        }, 'RELOADEROO');
+      }
+    } catch (error) {
+      logger.debug('Error setting up stderr capture', { error }, 'RELOADEROO');
+    }
 
     // Mirror child capabilities
     await this.mirrorChildCapabilities();
@@ -183,11 +210,6 @@ export class MCPProxy {
         logger.debug('Error closing child transport', { error });
       }
       this.childTransport = null;
-    }
-
-    if (this.childProcess) {
-      this.childProcess.kill('SIGTERM');
-      this.childProcess = null;
     }
 
     this.childTools = [];
@@ -289,9 +311,17 @@ export class MCPProxy {
     // Call tool - handle restart_server locally, forward others
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
+      const startTime = Date.now();
+
+      logger.debug(`Proxying tool call: ${name}`, { arguments: args }, 'PROXY-TOOL');
 
       if (name === 'restart_server') {
-        return this.handleRestartServer(args);
+        const result = await this.handleRestartServer(args);
+        logger.debug(`Tool call completed: ${name}`, { 
+          duration_ms: Date.now() - startTime,
+          success: !result.isError 
+        }, 'PROXY-TOOL');
+        return result;
       }
 
       // Forward to child
@@ -302,7 +332,20 @@ export class MCPProxy {
         );
       }
 
-      return this.childClient.callTool(request.params);
+      try {
+        const result = await this.childClient.callTool(request.params);
+        logger.debug(`Tool call completed: ${name}`, { 
+          duration_ms: Date.now() - startTime,
+          success: true 
+        }, 'PROXY-TOOL');
+        return result;
+      } catch (error) {
+        logger.debug(`Tool call failed: ${name}`, { 
+          duration_ms: Date.now() - startTime,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }, 'PROXY-TOOL');
+        throw error;
+      }
     });
   }
 
@@ -312,20 +355,27 @@ export class MCPProxy {
   private setupPromptHandlers(): void {
     // List prompts
     this.server.setRequestHandler(ListPromptsRequestSchema, async () => {
+      logger.debug('Proxying list prompts request', undefined, 'PROXY-PROMPT');
+      
       if (!this.childClient) {
         return { prompts: [] }; // Fallback
       }
 
       try {
-        return this.childClient.listPrompts();
+        const result = await this.childClient.listPrompts();
+        logger.debug('List prompts completed', { count: result.prompts?.length || 0 }, 'PROXY-PROMPT');
+        return result;
       } catch (error) {
-        logger.debug('Child does not support prompts', { error });
+        logger.debug('Child does not support prompts', { error }, 'PROXY-PROMPT');
         return { prompts: [] }; // Fallback
       }
     });
 
     // Get prompt
     this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+      const { name } = request.params;
+      logger.debug(`Proxying get prompt: ${name}`, undefined, 'PROXY-PROMPT');
+      
       if (!this.childClient) {
         throw new McpError(
           ErrorCode.InternalError,
@@ -333,7 +383,14 @@ export class MCPProxy {
         );
       }
 
-      return this.childClient.getPrompt(request.params);
+      try {
+        const result = await this.childClient.getPrompt(request.params);
+        logger.debug(`Get prompt completed: ${name}`, undefined, 'PROXY-PROMPT');
+        return result;
+      } catch (error) {
+        logger.debug(`Get prompt failed: ${name}`, { error: error instanceof Error ? error.message : 'Unknown error' }, 'PROXY-PROMPT');
+        throw error;
+      }
     });
   }
 
@@ -343,20 +400,27 @@ export class MCPProxy {
   private setupResourceHandlers(): void {
     // List resources
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+      logger.debug('Proxying list resources request', undefined, 'PROXY-RESOURCE');
+      
       if (!this.childClient) {
         return { resources: [] }; // Fallback
       }
 
       try {
-        return this.childClient.listResources();
+        const result = await this.childClient.listResources();
+        logger.debug('List resources completed', { count: result.resources?.length || 0 }, 'PROXY-RESOURCE');
+        return result;
       } catch (error) {
-        logger.debug('Child does not support resources', { error });
+        logger.debug('Child does not support resources', { error }, 'PROXY-RESOURCE');
         return { resources: [] }; // Fallback
       }
     });
 
     // Read resource
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      const { uri } = request.params;
+      logger.debug(`Proxying read resource: ${uri}`, undefined, 'PROXY-RESOURCE');
+      
       if (!this.childClient) {
         throw new McpError(
           ErrorCode.InternalError,
@@ -364,7 +428,14 @@ export class MCPProxy {
         );
       }
 
-      return this.childClient.readResource(request.params);
+      try {
+        const result = await this.childClient.readResource(request.params);
+        logger.debug(`Read resource completed: ${uri}`, undefined, 'PROXY-RESOURCE');
+        return result;
+      } catch (error) {
+        logger.debug(`Read resource failed: ${uri}`, { error: error instanceof Error ? error.message : 'Unknown error' }, 'PROXY-RESOURCE');
+        throw error;
+      }
     });
   }
 

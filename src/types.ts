@@ -81,6 +81,12 @@ export interface ProxyConfig {
   
   /** Delay in milliseconds between restart attempts (default: 1000) */
   restartDelay: number;
+  
+  /** Whether to run in debug mode (MCP inspection server) */
+  debugMode?: boolean;
+  
+  /** Optional log file path for writing logs to disk */
+  logFile?: string;
 }
 
 /**

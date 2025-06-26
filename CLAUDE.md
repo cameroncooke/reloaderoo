@@ -356,3 +356,50 @@ TIMESTAMP: [Current timestamp]
 ### Project Memories
 
 - **Testing Note**: So the test isn't a success unless you test via the inspector as that was a real world test and didn't work.
+
+## MCP Testing Instructions
+
+### Important Testing Considerations
+
+When testing Reloaderoo with MCP:
+
+1. **MCP Server Lifecycle**: Claude Code does not control the MCP server's lifecycle. The MCP server is managed by the Claude Code application.
+
+2. **Testing Approach**: 
+   - DO NOT run the server directly as a separate process for testing
+   - Running a new process directly is NOT the same environment as running the MCP from a true client application like Claude Code
+   - To test changes, you must restart Claude Code to force the MCP process to restart
+
+3. **Logging**:
+   - Currently, Reloaderoo logs to stderr only (no file logging implemented yet)
+   - To inspect logs when running via MCP, we need to either:
+     - Add file logging support to Reloaderoo
+     - Access the Claude Code application's capture of stderr output
+
+4. **MCP Configuration Location**: 
+   - Configuration file: `/Users/cameroncooke/.claude.json`
+   - Current test configuration:
+   ```json
+   "mcpServers": {
+     "reloaderooTest": {
+       "command": "node",
+       "args": [
+         "/Volumes/Developer/Reloaderoo/dist/bin/reloaderoo.js",
+         "--debug-mode",
+         "--log-level",
+         "debug",
+         "--",
+         "node",
+         "/Volumes/Developer/Reloaderoo/test-server-sdk.js"
+       ],
+       "env": {
+         "MCPDEV_PROXY_DEBUG_MODE": "true"
+       }
+     }
+   }
+   ```
+
+5. **Debug Mode**:
+   - Can be enabled via `--debug-mode` CLI flag OR `MCPDEV_PROXY_DEBUG_MODE=true` environment variable
+   - When properly configured, should expose 8 debug inspection tools
+   - If only seeing child server tools, the MCP client is bypassing the proxy
