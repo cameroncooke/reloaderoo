@@ -122,16 +122,8 @@ program
       process.stdout.write('\n');
     }
     
-    // Verbose mode - check common MCP servers
+    // Verbose mode - show environment variables
     if (options.verbose) {
-      process.stdout.write('Common MCP Server Checks:\n');
-      
-      const commonCommands = ['node', 'python', 'python3', 'npm', 'npx', 'deno', 'bun'];
-      commonCommands.forEach(cmd => {
-        process.stdout.write(`  ${cmd}: (skipped - command validation removed in refactor)\n`);
-      });
-      process.stdout.write('\n');
-      
       // Environment variables
       process.stdout.write('MCP-related Environment Variables:\n');
       Object.entries(process.env)
