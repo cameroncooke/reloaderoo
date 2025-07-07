@@ -111,15 +111,19 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
         return rateLimitError;
       }
 
+      // Set restart flag immediately after rate limit check passes (atomic)
+      this.state.isRestartInProgress = true;
+
       // Validate restart request parameters
       const validation = this.validateRestartRequest(restartParams);
       if (!validation.valid) {
+        this.state.isRestartInProgress = false; // Reset flag on validation failure
         return this.createErrorResponse(request.id!,
           PROXY_ERROR_RESPONSES.INVALID_RESTART_CONFIG,
           validation.error || 'Invalid restart request');
       }
 
-      // Execute the restart operation
+      // Execute the restart operation (flag will be reset in executeRestart finally block)
       const result = await this.executeRestart(restartParams);
       
       // Send success notifications
@@ -136,6 +140,9 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
       });
       
       this.emit('restart-failed', error as Error, this.state.operationCount);
+      
+      // Reset restart flag on error
+      this.state.isRestartInProgress = false;
       
       return this.createErrorResponse(request.id!,
         PROXY_ERROR_RESPONSES.RESTART_FAILED,
@@ -179,7 +186,7 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
   /** Execute the restart operation with configuration updates. */
   async executeRestart(params: RestartServerRequest): Promise<RestartServerResult> {
     const startTime = Date.now();
-    this.state.isRestartInProgress = true;
+    // Note: isRestartInProgress flag is already set by handleRestartTool
     this.state.operationCount++;
 
     try {
@@ -376,6 +383,13 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
   /** Apply rate limiting to restart requests. */
   private checkRateLimit(requestId: string): JSONRPCResponse | null {
     const now = Date.now();
+
+    // Check if restart is already in progress (atomic check)
+    if (this.state.isRestartInProgress) {
+      return this.createErrorResponse(requestId as RequestId,
+        PROXY_ERROR_RESPONSES.RESTART_IN_PROGRESS,
+        'A restart operation is already in progress');
+    }
 
     // Check concurrent requests
     if (this.state.concurrentRequests.size >= this.rateLimit.maxConcurrent) {

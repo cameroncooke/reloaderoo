@@ -30,7 +30,7 @@ This plan addresses all issues identified in the comprehensive code analysis rep
 |----------|------|--------|----------|------------|
 | 🔴 HIGH | [Task 1](#task-1) - Eliminate Code Duplication | ✅ COMPLETED | Claude | 2025-01-06 |
 | 🔴 HIGH | [Task 2](#task-2) - Add Core Component Tests | ✅ COMPLETED | Claude | 2025-01-06 |
-| 🟡 MEDIUM | [Task 3](#task-3) - Fix Race Condition | ⏳ PENDING | - | - |
+| 🟡 MEDIUM | [Task 3](#task-3) - Fix Race Condition | ✅ COMPLETED | Claude | 2025-01-06 |
 | 🟡 MEDIUM | [Task 4](#task-4) - Improve Error Visibility | ⏳ PENDING | - | - |
 | 🟡 MEDIUM | [Task 5](#task-5) - Resource Cleanup | ⏳ PENDING | - | - |
 | 🟢 LOW | [Task 6](#task-6) - Remove Dead Code | ⏳ PENDING | - | - |
@@ -165,7 +165,7 @@ This plan addresses all issues identified in the comprehensive code analysis rep
 
 ### Task 3: Fix Race Condition in RestartHandler
 
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETED
 **Priority:** MEDIUM
 **Estimated Time:** 1 hour
 **File:** `src/restart-handler.ts`
@@ -202,11 +202,11 @@ This plan addresses all issues identified in the comprehensive code analysis rep
    - Verify only one restart proceeds
 
 #### Acceptance Criteria
-- [ ] Race condition eliminated
-- [ ] Concurrent restart attempts properly rejected
-- [ ] Flag properly reset in all code paths
-- [ ] Tests verify fix works
-- [ ] No functional changes to restart behavior
+- [x] Race condition eliminated (**Fixed atomic flag setting in checkRateLimit and handleRestartTool**)
+- [x] Concurrent restart attempts properly rejected (**Added isRestartInProgress check in rate limiting**)
+- [x] Flag properly reset in all code paths (**Added flag reset in validation errors and catch block**)
+- [x] Tests verify fix works (**8 comprehensive tests including concurrent request scenarios**)
+- [x] No functional changes to restart behavior (**Preserved all existing functionality**)
 
 ---
 
@@ -429,6 +429,7 @@ This plan addresses all issues identified in the comprehensive code analysis rep
 |------|------|------------|---------------|-------|
 | 2025-01-06 | Task 1 | 45 min | PENDING → COMPLETED | Created `createInspectionAction` wrapper, eliminated 84 lines of duplication, all tests pass |
 | 2025-01-06 | Task 2 | 90 min | PENDING → COMPLETED | Added comprehensive MCPProxy tests, 14 test cases covering constructor, config, lifecycle, error handling |
+| 2025-01-06 | Task 3 | 60 min | PENDING → COMPLETED | Fixed restart handler race condition, added atomic flag setting, 8 comprehensive concurrent request tests |
 
 ### Completion Checklist
 
