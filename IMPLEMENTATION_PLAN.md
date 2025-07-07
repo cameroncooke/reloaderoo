@@ -448,8 +448,9 @@ This plan addresses all issues identified in the comprehensive code analysis rep
 
 **After Completing Each Task:**
 - [ ] Update task status in overview table
-- [ ] Log work session details
-- [ ] Run full test suite
+- [ ] Log work session details  
+- [ ] Run: `npm run build && npm run lint && npm test -- --run`
+- [ ] Manual test relevant CLI commands
 - [ ] **Create git commit with descriptive message**
 - [ ] Update plan with any learnings
 - [ ] Review plan before next task
