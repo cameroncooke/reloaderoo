@@ -44,6 +44,46 @@ function createClientConfig(
 }
 
 /**
+ * Create a standard inspection action handler that eliminates code duplication
+ */
+function createInspectionAction<T>(
+  commandName: string | ((args: any[]) => string),
+  operation: (client: SimpleClient, ...args: any[]) => Promise<T>
+) {
+  return async (...args: any[]) => {
+    // Extract options (always the last argument from commander)
+    const options = args[args.length - 1];
+    const commandArgs = args.slice(0, -1); // Remove options from args
+    
+    // Parse child command from process.argv
+    const child = parseChildCommand(process.argv);
+    if (!child) {
+      OutputFormatter.outputError(new Error('Child command required after --'));
+      return;
+    }
+
+    // Create client configuration
+    const config = createClientConfig(child.command, child.args, options);
+    
+    // Determine command name for timing
+    const timingName = typeof commandName === 'function' 
+      ? commandName(commandArgs) 
+      : commandName;
+    
+    // Execute operation with timing
+    await OutputFormatter.executeWithTiming(
+      timingName,
+      async () => {
+        return await SimpleClient.executeOperation(config, async (client) => {
+          return await operation(client, ...commandArgs);
+        });
+      },
+      options.raw
+    );
+  };
+}
+
+/**
  * Create the inspect command with all subcommands
  */
 export function createInspectCommand(): Command {
@@ -69,51 +109,19 @@ Examples:
   addCommonOptions(
     inspect.command('server-info')
       .description('Get server information and capabilities')
-      .action(async (options) => {
-        const child = parseChildCommand(process.argv);
-        if (!child) {
-          OutputFormatter.outputError(new Error('Child command required after --'));
-          return;
-        }
-
-        const config = createClientConfig(child.command, child.args, options);
-        
-        await OutputFormatter.executeWithTiming(
-          'server-info',
-          async () => {
-            return await SimpleClient.executeOperation(config, async (client) => {
-              return await client.getServerInfo();
-            });
-          },
-          options.raw
-        );
-      })
+      .action(createInspectionAction('server-info', async (client) => {
+        return await client.getServerInfo();
+      }))
   );
 
   // List tools command
   addCommonOptions(
     inspect.command('list-tools')
       .description('List all available tools')
-      .action(async (options) => {
-        const child = parseChildCommand(process.argv);
-        if (!child) {
-          OutputFormatter.outputError(new Error('Child command required after --'));
-          return;
-        }
-
-        const config = createClientConfig(child.command, child.args, options);
-        
-        await OutputFormatter.executeWithTiming(
-          'list-tools',
-          async () => {
-            return await SimpleClient.executeOperation(config, async (client) => {
-              const tools = await client.listTools();
-              return { tools };
-            });
-          },
-          options.raw
-        );
-      })
+      .action(createInspectionAction('list-tools', async (client) => {
+        const tools = await client.listTools();
+        return { tools };
+      }))
   );
 
   // Call tool command
@@ -121,112 +129,52 @@ Examples:
     inspect.command('call-tool <name>')
       .description('Call a specific tool')
       .option('-p, --params <json>', 'Tool parameters as JSON string')
-      .action(async (name: string, options) => {
-        const child = parseChildCommand(process.argv);
-        if (!child) {
-          OutputFormatter.outputError(new Error('Child command required after --'));
-          return;
-        }
-
-        let params: unknown = undefined;
-        if (options.params) {
-          try {
-            params = JSON.parse(options.params);
-          } catch (error) {
-            OutputFormatter.outputError(new Error(`Invalid JSON parameters: ${error}`));
-            return;
+      .action(createInspectionAction(
+        (args) => `call-tool:${args[0]}`, 
+        async (client, name: string, options) => {
+          let params: unknown = undefined;
+          if (options.params) {
+            try {
+              params = JSON.parse(options.params);
+            } catch (error) {
+              throw new Error(`Invalid JSON parameters: ${error}`);
+            }
           }
+          return await client.callTool(name, params);
         }
-
-        const config = createClientConfig(child.command, child.args, options);
-        
-        await OutputFormatter.executeWithTiming(
-          `call-tool:${name}`,
-          async () => {
-            return await SimpleClient.executeOperation(config, async (client) => {
-              return await client.callTool(name, params);
-            });
-          },
-          options.raw
-        );
-      })
+      ))
   );
 
   // List resources command
   addCommonOptions(
     inspect.command('list-resources')
       .description('List all available resources')
-      .action(async (options) => {
-        const child = parseChildCommand(process.argv);
-        if (!child) {
-          OutputFormatter.outputError(new Error('Child command required after --'));
-          return;
-        }
-
-        const config = createClientConfig(child.command, child.args, options);
-        
-        await OutputFormatter.executeWithTiming(
-          'list-resources',
-          async () => {
-            return await SimpleClient.executeOperation(config, async (client) => {
-              const resources = await client.listResources();
-              return { resources };
-            });
-          },
-          options.raw
-        );
-      })
+      .action(createInspectionAction('list-resources', async (client) => {
+        const resources = await client.listResources();
+        return { resources };
+      }))
   );
 
   // Read resource command
   addCommonOptions(
     inspect.command('read-resource <uri>')
       .description('Read a specific resource')
-      .action(async (uri: string, options) => {
-        const child = parseChildCommand(process.argv);
-        if (!child) {
-          OutputFormatter.outputError(new Error('Child command required after --'));
-          return;
+      .action(createInspectionAction(
+        (args) => `read-resource:${args[0]}`,
+        async (client, uri: string) => {
+          return await client.readResource(uri);
         }
-
-        const config = createClientConfig(child.command, child.args, options);
-        
-        await OutputFormatter.executeWithTiming(
-          `read-resource:${uri}`,
-          async () => {
-            return await SimpleClient.executeOperation(config, async (client) => {
-              return await client.readResource(uri);
-            });
-          },
-          options.raw
-        );
-      })
+      ))
   );
 
   // List prompts command
   addCommonOptions(
     inspect.command('list-prompts')
       .description('List all available prompts')
-      .action(async (options) => {
-        const child = parseChildCommand(process.argv);
-        if (!child) {
-          OutputFormatter.outputError(new Error('Child command required after --'));
-          return;
-        }
-
-        const config = createClientConfig(child.command, child.args, options);
-        
-        await OutputFormatter.executeWithTiming(
-          'list-prompts',
-          async () => {
-            return await SimpleClient.executeOperation(config, async (client) => {
-              const prompts = await client.listPrompts();
-              return { prompts };
-            });
-          },
-          options.raw
-        );
-      })
+      .action(createInspectionAction('list-prompts', async (client) => {
+        const prompts = await client.listPrompts();
+        return { prompts };
+      }))
   );
 
   // Get prompt command
@@ -234,61 +182,30 @@ Examples:
     inspect.command('get-prompt <name>')
       .description('Get a specific prompt')
       .option('-a, --args <json>', 'Prompt arguments as JSON string')
-      .action(async (name: string, options) => {
-        const child = parseChildCommand(process.argv);
-        if (!child) {
-          OutputFormatter.outputError(new Error('Child command required after --'));
-          return;
-        }
-
-        let args: Record<string, string> | undefined = undefined;
-        if (options.args) {
-          try {
-            args = JSON.parse(options.args);
-          } catch (error) {
-            OutputFormatter.outputError(new Error(`Invalid JSON arguments: ${error}`));
-            return;
+      .action(createInspectionAction(
+        (args) => `get-prompt:${args[0]}`,
+        async (client, name: string, options) => {
+          let args: Record<string, string> | undefined = undefined;
+          if (options.args) {
+            try {
+              args = JSON.parse(options.args);
+            } catch (error) {
+              throw new Error(`Invalid JSON arguments: ${error}`);
+            }
           }
+          return await client.getPrompt(name, args);
         }
-
-        const config = createClientConfig(child.command, child.args, options);
-        
-        await OutputFormatter.executeWithTiming(
-          `get-prompt:${name}`,
-          async () => {
-            return await SimpleClient.executeOperation(config, async (client) => {
-              return await client.getPrompt(name, args);
-            });
-          },
-          options.raw
-        );
-      })
+      ))
   );
 
   // Ping command
   addCommonOptions(
     inspect.command('ping')
       .description('Check server connectivity')
-      .action(async (options) => {
-        const child = parseChildCommand(process.argv);
-        if (!child) {
-          OutputFormatter.outputError(new Error('Child command required after --'));
-          return;
-        }
-
-        const config = createClientConfig(child.command, child.args, options);
-        
-        await OutputFormatter.executeWithTiming(
-          'ping',
-          async () => {
-            return await SimpleClient.executeOperation(config, async (client) => {
-              const alive = await client.ping();
-              return { alive, timestamp: new Date().toISOString() };
-            });
-          },
-          options.raw
-        );
-      })
+      .action(createInspectionAction('ping', async (client) => {
+        const alive = await client.ping();
+        return { alive, timestamp: new Date().toISOString() };
+      }))
   );
 
   // MCP server command - starts debug proxy as MCP server

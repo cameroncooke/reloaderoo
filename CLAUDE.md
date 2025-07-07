@@ -156,9 +156,21 @@ npm run inspector:inspect
 
 1. **Make changes to source code**
 2. **Build:** `npm run build`
-3. **Test CLI:** `reloaderoo inspect list-tools -- node test-server-sdk.js`
-4. **Test MCP:** `reloaderoo inspect mcp -- node test-server-sdk.js`
-5. **Test with Inspector:** `npm run inspector:inspect`
+3. **Lint:** `npm run lint` 
+4. **Test:** `npm test`
+5. **Test CLI:** `reloaderoo inspect list-tools -- node test-server-sdk.js`
+6. **Test MCP:** `reloaderoo inspect mcp -- node test-server-sdk.js`
+7. **Test with Inspector:** `npm run inspector:inspect`
+
+## Task Completion Workflow
+
+**After completing each implementation task:**
+1. **Build:** `npm run build` - Verify TypeScript compilation
+2. **Lint:** `npm run lint` - Check code quality and type safety  
+3. **Test:** `npm test` - Run full test suite
+4. **Manual Test:** Test relevant CLI commands
+5. **Commit:** Create descriptive git commit
+6. **Update Plan:** Mark task as completed in IMPLEMENTATION_PLAN.md
 
 ## Important Notes
 
