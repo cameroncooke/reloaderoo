@@ -140,6 +140,16 @@ export class SimpleClient {
     }
     this.pendingRequests.clear();
 
+    // Clean up event listeners to prevent memory leaks
+    if (this.childProcess) {
+      this.childProcess.removeAllListeners('error');
+      this.childProcess.removeAllListeners('exit');
+      
+      // Clean up stdio stream listeners
+      this.childProcess.stderr?.removeAllListeners('data');
+      this.childProcess.stdout?.removeAllListeners('data');
+    }
+
     // Terminate child process if still running
     if (this.childProcess && !this.childProcess.killed) {
       this.childProcess.kill('SIGTERM');
