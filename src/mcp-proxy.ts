@@ -35,6 +35,13 @@ import {
 import { logger } from './mcp-logger.js';
 import { MCP_PROTOCOL, PROXY_TOOLS } from './constants.js';
 import type { ProxyConfig } from './types.js';
+import {
+  ToolRequestHandler,
+  ResourceRequestHandler,
+  PromptRequestHandler,
+  CompletionRequestHandler,
+  CoreRequestHandler
+} from './handlers/index.js';
 
 /**
  * Production-ready Reloaderoo with full protocol support
@@ -47,6 +54,13 @@ export class MCPProxy {
   private isShuttingDown = false;
   private restartInProgress = false;
   private childTools: Tool[] = [];
+  
+  // Request handlers
+  private toolHandler: ToolRequestHandler;
+  private resourceHandler: ResourceRequestHandler;
+  private promptHandler: PromptRequestHandler;
+  private completionHandler: CompletionRequestHandler;
+  private coreHandler: CoreRequestHandler;
 
   constructor(config: ProxyConfig) {
     this.config = config;
@@ -67,6 +81,17 @@ export class MCPProxy {
         }
       }
     );
+
+    // Initialize request handlers
+    this.toolHandler = new ToolRequestHandler(
+      this.childClient,
+      this.childTools,
+      this.handleRestartServer.bind(this)
+    );
+    this.resourceHandler = new ResourceRequestHandler(this.childClient);
+    this.promptHandler = new PromptRequestHandler(this.childClient);
+    this.completionHandler = new CompletionRequestHandler(this.childClient);
+    this.coreHandler = new CoreRequestHandler(this.childClient);
 
     this.setupRequestHandlers();
     this.setupErrorHandling();
@@ -287,31 +312,61 @@ export class MCPProxy {
   }
 
   /**
-   * Setup all MCP request handlers
+   * Setup all MCP request handlers using dedicated handler classes
    */
   private setupRequestHandlers(): void {
     // Tools
-    this.setupToolHandlers();
+    this.server.setRequestHandler(ListToolsRequestSchema, (request) => 
+      this.toolHandler.handleListTools(request)
+    );
+    this.server.setRequestHandler(CallToolRequestSchema, (request) => 
+      this.toolHandler.handleCallTool(request)
+    );
     
     // Prompts
-    this.setupPromptHandlers();
+    this.server.setRequestHandler(ListPromptsRequestSchema, (request) => 
+      this.promptHandler.handleListPrompts(request)
+    );
+    this.server.setRequestHandler(GetPromptRequestSchema, (request) => 
+      this.promptHandler.handleGetPrompt(request)
+    );
     
     // Resources
-    this.setupResourceHandlers();
+    this.server.setRequestHandler(ListResourcesRequestSchema, (request) => 
+      this.resourceHandler.handleListResources(request)
+    );
+    this.server.setRequestHandler(ReadResourceRequestSchema, (request) => 
+      this.resourceHandler.handleReadResource(request)
+    );
     
     // Completion
-    this.setupCompletionHandlers();
+    this.server.setRequestHandler(CompleteRequestSchema, (request) => 
+      this.completionHandler.handleComplete(request)
+    );
     
     // Sampling
-    this.setupSamplingHandlers();
+    this.server.setRequestHandler(CreateMessageRequestSchema, (request) => 
+      this.completionHandler.handleCreateMessage(request)
+    );
     
     // Core
-    this.setupCoreHandlers();
+    this.server.setRequestHandler(PingRequestSchema, (request) => 
+      this.coreHandler.handlePing(request)
+    );
   }
 
   /**
    * Setup tool-related request handlers
    */
+  private updateHandlersWithChildClient(): void {
+    this.toolHandler.updateChildClient(this.childClient);
+    this.toolHandler.updateChildTools(this.childTools);
+    this.resourceHandler.updateChildClient(this.childClient);
+    this.promptHandler.updateChildClient(this.childClient);
+    this.completionHandler.updateChildClient(this.childClient);
+    this.coreHandler.updateChildClient(this.childClient);
+  }
+
   private setupToolHandlers(): void {
     // List tools - include child tools + restart_server
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
