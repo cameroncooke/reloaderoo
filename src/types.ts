@@ -5,6 +5,8 @@
  * extending the official MCP v2025-03-26 protocol types with proxy-specific functionality.
  */
 
+import { PROXY_TOOLS } from './constants.js';
+
 // Re-export and extend types from the official MCP SDK
 export type {
   JSONRPCMessage,
@@ -260,7 +262,7 @@ export const RESTART_SERVER_SCHEMA = {
  * This tool allows clients to trigger a restart of the child MCP server.
  */
 export const RESTART_SERVER_TOOL: MCPTool = {
-  name: 'restart_server',
+  name: PROXY_TOOLS.RESTART_SERVER,
   description: 'Restart the MCP server process with optional configuration updates. ' +
                'This allows hot-reloading of server code or applying configuration changes ' +
                'without losing the client session.',
@@ -501,7 +503,7 @@ export function isProxyError(error: unknown): error is ProxyError {
  */
 export function isRestartServerRequest(request: JSONRPCRequest): boolean {
   return request.method === 'tools/call' && 
-         (request.params as any)?.['name'] === 'restart_server';
+         (request.params as any)?.['name'] === PROXY_TOOLS.RESTART_SERVER;
 }
 
 /**

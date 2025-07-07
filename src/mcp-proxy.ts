@@ -33,6 +33,7 @@ import {
   McpError
 } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from './mcp-logger.js';
+import { MCP_PROTOCOL, PROXY_TOOLS } from './constants.js';
 import type { ProxyConfig } from './types.js';
 
 /**
@@ -267,16 +268,16 @@ export class MCPProxy {
     try {
       // Notify tools changed
       await this.server.notification({
-        method: 'notifications/tools/list_changed'
+        method: MCP_PROTOCOL.NOTIFICATIONS.TOOLS_LIST_CHANGED
       });
 
       // Notify other capabilities if supported
       await this.server.notification({
-        method: 'notifications/prompts/list_changed'
+        method: MCP_PROTOCOL.NOTIFICATIONS.PROMPTS_LIST_CHANGED
       });
 
       await this.server.notification({
-        method: 'notifications/resources/list_changed'
+        method: MCP_PROTOCOL.NOTIFICATIONS.RESOURCES_LIST_CHANGED
       });
 
       logger.debug('Sent capability change notifications');
@@ -329,7 +330,7 @@ export class MCPProxy {
 
       logger.debug(`Proxying tool call: ${name}`, { arguments: args }, 'PROXY-TOOL');
 
-      if (name === 'restart_server') {
+      if (name === PROXY_TOOLS.RESTART_SERVER) {
         const result = await this.handleRestartServer(args);
         logger.debug(`Tool call completed: ${name}`, { 
           duration_ms: Date.now() - startTime,
@@ -519,7 +520,7 @@ export class MCPProxy {
     const force = args?.force || false;
 
     try {
-      logger.info('Executing restart_server tool', { force });
+      logger.info(`Executing ${PROXY_TOOLS.RESTART_SERVER} tool`, { force });
       
       this.restartInProgress = true;
       await this.startChildServer();
@@ -552,7 +553,7 @@ export class MCPProxy {
    */
   private getRestartServerTool(): Tool {
     return {
-      name: 'restart_server',
+      name: PROXY_TOOLS.RESTART_SERVER,
       description: 'Restart the child MCP server process for hot-reloading during development',
       inputSchema: {
         type: 'object',

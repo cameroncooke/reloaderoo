@@ -23,6 +23,7 @@ import {
   RESTART_SERVER_TOOL
 } from './types.js';
 import { logger } from './mcp-logger.js';
+import { PROXY_TOOLS } from './constants.js';
 
 /**
  * CapabilityAugmenter handles the modification of InitializeResult responses
@@ -84,7 +85,7 @@ export class CapabilityAugmenter {
       this.logger.info('Successfully augmented InitializeResult', {
         newServerName: modifiedServerInfo.name,
         newVersion: modifiedServerInfo.version,
-        addedTools: ['restart_server'],
+        addedTools: [PROXY_TOOLS.RESTART_SERVER],
         totalCapabilities: Object.keys(finalCapabilities).length
       });
 
@@ -107,7 +108,7 @@ export class CapabilityAugmenter {
    * @returns Enhanced capabilities with restart_server tool
    */
   public addRestartTool(childCapabilities: ServerCapabilities): ProxyCapabilities {
-    this.logger.debug('Adding restart_server tool to capabilities');
+    this.logger.debug(`Adding ${PROXY_TOOLS.RESTART_SERVER} tool to capabilities`);
 
     // Create enhanced capabilities with tools support
     const enhancedCapabilities: ProxyCapabilities = {
@@ -292,7 +293,7 @@ export class CapabilityAugmenter {
   private combineInstructions(childInstructions?: string): string | undefined {
     const proxyInstructions = 
       'This server is running through mcpdev-proxy, which provides development capabilities. ' +
-      'Use the restart_server tool to restart the underlying server with optional configuration updates.';
+      `Use the ${PROXY_TOOLS.RESTART_SERVER} tool to restart the underlying server with optional configuration updates.`;
 
     if (!childInstructions) {
       return proxyInstructions;

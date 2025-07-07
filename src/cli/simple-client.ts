@@ -7,6 +7,7 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import { logger } from '../mcp-logger.js';
+import { MCP_PROTOCOL, ERROR_MESSAGES } from '../constants.js';
 
 export interface SimpleClientConfig {
   command: string;
@@ -113,8 +114,8 @@ export class SimpleClient {
     this.connected = true;
 
     // Initialize the MCP connection
-    await this.sendRequest('initialize', {
-      protocolVersion: '2024-11-05',
+    await this.sendRequest(MCP_PROTOCOL.METHODS.INITIALIZE, {
+      protocolVersion: MCP_PROTOCOL.VERSION,
       capabilities: {},
       clientInfo: {
         name: 'reloaderoo-cli',
@@ -239,11 +240,11 @@ export class SimpleClient {
    */
   async listTools(): Promise<any[]> {
     try {
-      const result = await this.sendRequest('tools/list');
+      const result = await this.sendRequest(MCP_PROTOCOL.METHODS.TOOLS_LIST);
       return result.tools || [];
     } catch (error) {
       // If method not found, return empty array
-      if (error instanceof Error && error.message === 'Method not found') {
+      if (error instanceof Error && error.message === ERROR_MESSAGES.METHOD_NOT_FOUND) {
         logger.debug('Server does not support tools/list method');
         return [];
       }
@@ -255,7 +256,7 @@ export class SimpleClient {
    * Call a tool with parameters
    */
   async callTool(name: string, args?: unknown): Promise<any> {
-    return await this.sendRequest('tools/call', {
+    return await this.sendRequest(MCP_PROTOCOL.METHODS.TOOLS_CALL, {
       name,
       arguments: args || {}
     });
@@ -266,11 +267,11 @@ export class SimpleClient {
    */
   async listResources(): Promise<any[]> {
     try {
-      const result = await this.sendRequest('resources/list');
+      const result = await this.sendRequest(MCP_PROTOCOL.METHODS.RESOURCES_LIST);
       return result.resources || [];
     } catch (error) {
       // If method not found, return empty array
-      if (error instanceof Error && error.message === 'Method not found') {
+      if (error instanceof Error && error.message === ERROR_MESSAGES.METHOD_NOT_FOUND) {
         logger.debug('Server does not support resources/list method');
         return [];
       }
@@ -282,7 +283,7 @@ export class SimpleClient {
    * Read a specific resource
    */
   async readResource(uri: string): Promise<any> {
-    return await this.sendRequest('resources/read', { uri });
+    return await this.sendRequest(MCP_PROTOCOL.METHODS.RESOURCES_READ, { uri });
   }
 
   /**
@@ -290,11 +291,11 @@ export class SimpleClient {
    */
   async listPrompts(): Promise<any[]> {
     try {
-      const result = await this.sendRequest('prompts/list');
+      const result = await this.sendRequest(MCP_PROTOCOL.METHODS.PROMPTS_LIST);
       return result.prompts || [];
     } catch (error) {
       // If method not found, return empty array
-      if (error instanceof Error && error.message === 'Method not found') {
+      if (error instanceof Error && error.message === ERROR_MESSAGES.METHOD_NOT_FOUND) {
         logger.debug('Server does not support prompts/list method');
         return [];
       }
@@ -306,7 +307,7 @@ export class SimpleClient {
    * Get a specific prompt with arguments
    */
   async getPrompt(name: string, args?: Record<string, string>): Promise<any> {
-    return await this.sendRequest('prompts/get', {
+    return await this.sendRequest(MCP_PROTOCOL.METHODS.PROMPTS_GET, {
       name,
       arguments: args || {}
     });
@@ -318,7 +319,7 @@ export class SimpleClient {
   async getServerInfo(): Promise<any> {
     // Return basic info since we already have it from initialization
     return {
-      protocolVersion: '2024-11-05',
+      protocolVersion: MCP_PROTOCOL.VERSION,
       capabilities: {},
       serverInfo: {
         name: 'child-server',
