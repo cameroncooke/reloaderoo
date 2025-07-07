@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { logger } from './logger.js';
+import { logger } from './mcp-logger.js';
 import {
   type JSONRPCRequest,
   type JSONRPCResponse,

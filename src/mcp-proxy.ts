@@ -242,6 +242,20 @@ export class MCPProxy {
 
     } catch (error) {
       logger.error('Failed to mirror child capabilities', { error });
+      
+      // If the child server doesn't support tools/list, continue anyway
+      // This makes Reloaderoo compatible with incomplete MCP implementations
+      if (error instanceof McpError && error.code === ErrorCode.MethodNotFound) {
+        logger.warn('Child server does not support tools/list - continuing with empty tool list');
+        this.childTools = [];
+        
+        if (this.restartInProgress) {
+          this.restartInProgress = false;
+        }
+        return;
+      }
+      
+      // For other errors, still throw to prevent startup with broken child
       throw error;
     }
   }

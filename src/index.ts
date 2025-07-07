@@ -8,7 +8,7 @@
 // Re-export everything for library usage
 export { MCPProxy } from './mcp-proxy.js';
 export * from './types.js';
-export { logger, LoggerManager } from './logger.js';
+export { logger } from './mcp-logger.js';
 
 // CLI functionality - only run if this file is executed directly
 // Handle both direct execution and symlink execution (like npx)

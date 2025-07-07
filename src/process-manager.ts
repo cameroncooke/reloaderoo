@@ -5,7 +5,7 @@
 import { EventEmitter } from 'events';
 import { ChildProcess } from 'child_process';
 import { spawn } from 'cross-spawn';
-import { logger } from './logger.js';
+import { logger } from './mcp-logger.js';
 import {
   ProxyConfig,
   ProxyConfigUpdate,

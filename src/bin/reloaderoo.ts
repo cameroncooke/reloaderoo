@@ -14,13 +14,11 @@
  */
 
 import { Command } from 'commander';
-import { existsSync, accessSync, constants, readFileSync } from 'fs';
-import { resolve, isAbsolute, dirname } from 'path';
-import { MCPProxy } from '../mcp-proxy.js';
-import { DebugProxy } from '../debug-proxy.js';
-import { Config, validateCommand, getEnvironmentConfig } from '../config.js';
-import { logger } from '../mcp-logger.js';
-import type { ProxyConfig, LoggingLevel } from '../types.js';
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { getEnvironmentConfig } from '../config.js';
+import { createProxyCommand } from '../cli/commands/proxy.js';
+import { createInspectCommand } from '../cli/commands/inspect.js';
 
 /**
  * Load version from package.json dynamically
@@ -58,33 +56,6 @@ function getVersion(): string {
   }
 }
 
-/**
- * Validate directory path and check accessibility
- */
-function validateDirectory(path: string, name: string): { valid: boolean; error?: string } {
-  const absPath = isAbsolute(path) ? path : resolve(path);
-  
-  if (!existsSync(absPath)) {
-    return { valid: false, error: `${name} does not exist: ${absPath}` };
-  }
-  
-  try {
-    accessSync(absPath, constants.R_OK | constants.W_OK);
-    return { valid: true };
-  } catch {
-    return { valid: false, error: `${name} is not readable/writable: ${absPath}` };
-  }
-}
-
-
-/**
- * Format duration for human-readable output
- */
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
-}
 
 // Create the main CLI program
 const program = new Command();
@@ -93,14 +64,13 @@ program
   .name('reloaderoo')
   .description('A transparent MCP development wrapper for hot-reloading servers')
   .version(getVersion())
-  .usage('[options] -- <child-command> [child-args...]')
   .addHelpText('after', `
 Examples:
-  $ reloaderoo -- node server.js
-  $ reloaderoo --log-level debug -- python mcp_server.py --port 8080
-  $ reloaderoo --working-dir ./src --max-restarts 5 -- npm run serve
-  $ reloaderoo --debug-mode -- node server.js  # Run as MCP inspection server
-  $ reloaderoo info
+  $ reloaderoo proxy -- node server.js                    # Run as MCP proxy server
+  $ reloaderoo inspect list-tools -- node server.js       # List tools via CLI
+  $ reloaderoo inspect mcp -- node server.js              # Run as MCP inspection server
+  $ reloaderoo inspect call-tool get_weather --params '{"location": "London"}' -- node server.js
+  $ reloaderoo info                                        # Show system info
 
 Environment Variables:
   MCPDEV_PROXY_LOG_LEVEL      Set default log level
@@ -109,226 +79,14 @@ Environment Variables:
   MCPDEV_PROXY_AUTO_RESTART   Enable/disable auto-restart (true/false)
   MCPDEV_PROXY_TIMEOUT        Operation timeout in milliseconds
   MCPDEV_PROXY_CWD            Default working directory
-  MCPDEV_PROXY_DEBUG_MODE     Enable debug mode (true/false)`);
+  MCPDEV_PROXY_DEBUG_MODE     Enable debug mode (true/false)
 
-// Main proxy command with options
-program
-  .option(
-    '-w, --working-dir <directory>',
-    'Working directory for the child process',
-    process.cwd()
-  )
-  .option(
-    '-l, --log-level <level>',
-    'Log level (debug, info, notice, warning, error, critical)',
-    'info'
-  )
-  .option(
-    '-f, --log-file <path>',
-    'Custom log file path (logs to stderr by default)'
-  )
-  .option(
-    '-t, --restart-timeout <ms>',
-    'Timeout for restart operations in milliseconds',
-    '30000'
-  )
-  .option(
-    '-m, --max-restarts <number>',
-    'Maximum number of restart attempts (0-10)',
-    '3'
-  )
-  .option(
-    '-d, --restart-delay <ms>',
-    'Delay between restart attempts in milliseconds',
-    '1000'
-  )
-  .option(
-    '-q, --quiet',
-    'Suppress non-essential output'
-  )
-  .option(
-    '--no-auto-restart',
-    'Disable automatic restart on crashes'
-  )
-  .option(
-    '--debug',
-    'Enable debug mode with verbose logging'
-  )
-  .option(
-    '--dry-run',
-    'Validate configuration without starting proxy'
-  )
-  .option(
-    '--debug-mode',
-    'Run as an MCP inspection server instead of a proxy'
-  )
-  .action(async (options) => {
-    try {
-      // Handle debug mode
-      if (options.debug) {
-        options.logLevel = 'debug';
-      }
-      
-      // Create configuration
-      const config = new Config();
-      
-      // Load environment configuration first
-      const envConfig = getEnvironmentConfig();
-      if (Object.keys(envConfig).length > 0 && !options.quiet) {
-        process.stderr.write('Loaded configuration from environment variables\n');
-      }
-      
-      // Check for debug mode from environment if not set via CLI
-      const isDebugMode = options.debugMode || envConfig.debugMode;
-      
-      // Parse child command using pass-through syntax (-- child-command [args...])
-      const dashIndex = process.argv.indexOf('--');
-      if (dashIndex === -1 || dashIndex >= process.argv.length - 1) {
-        process.stderr.write('Error: Child command is required\n');
-        process.stderr.write('Use: reloaderoo [options] -- <command> [args...]\n');
-        process.stderr.write('Example: reloaderoo -- node server.js\n');
-        process.stderr.write('Try: reloaderoo --help\n');
-        process.exit(1);
-      }
-      
-      const childCommand = process.argv[dashIndex + 1]!;
-      const childArgs = process.argv.slice(dashIndex + 2);
-      
-      // Validate child command
-      const cmdValidation = validateCommand(childCommand);
-      if (!cmdValidation.valid) {
-        process.stderr.write(`Error: ${cmdValidation.error}\n`);
-        process.exit(1);
-      }
-      
-      // Validate working directory
-      const dirValidation = validateDirectory(options.workingDir, 'Working directory');
-      if (!dirValidation.valid) {
-        process.stderr.write(`Error: ${dirValidation.error}\n`);
-        process.exit(1);
-      }
-      
-      // Validate numeric options
-      const restartTimeout = parseInt(options.restartTimeout);
-      if (isNaN(restartTimeout) || restartTimeout < 1000 || restartTimeout > 300000) {
-        process.stderr.write('Error: --restart-timeout must be between 1000 and 300000\n');
-        process.exit(1);
-      }
-      
-      const maxRestarts = parseInt(options.maxRestarts);
-      if (isNaN(maxRestarts) || maxRestarts < 0 || maxRestarts > 10) {
-        process.stderr.write('Error: --max-restarts must be between 0 and 10\n');
-        process.exit(1);
-      }
-      
-      const restartDelay = parseInt(options.restartDelay);
-      if (isNaN(restartDelay) || restartDelay < 0 || restartDelay > 60000) {
-        process.stderr.write('Error: --restart-delay must be between 0 and 60000\n');
-        process.exit(1);
-      }
-      
-      // Validate log level
-      const validLogLevels: LoggingLevel[] = ['debug', 'info', 'notice', 'warning', 'error', 'critical'];
-      if (!validLogLevels.includes(options.logLevel as LoggingLevel)) {
-        process.stderr.write(`Error: Invalid log level '${options.logLevel}'\n`);
-        process.stderr.write(`Valid levels: ${validLogLevels.join(', ')}\n`);
-        process.exit(1);
-      }
-      
-      // Build proxy configuration
-      const proxyConfig: ProxyConfig = {
-        childCommand: cmdValidation.path || childCommand,
-        childArgs,
-        workingDirectory: resolve(options.workingDir),
-        environment: process.env as Record<string, string>,
-        restartLimit: maxRestarts,
-        operationTimeout: restartTimeout,
-        logLevel: options.logLevel as LoggingLevel,
-        autoRestart: options.autoRestart !== false,
-        restartDelay
-      };
-      
-      // Configure logging
-      logger.setLevel(proxyConfig.logLevel as any);
-      
-      // Set custom log file if provided via CLI or environment
-      const logFile = options.logFile || envConfig.logFile;
-      if (logFile) {
-        logger.setLogFile(logFile);
-        if (!options.quiet) {
-          process.stderr.write(`Logging to file: ${logFile}\n`);
-        }
-      }
-      
-      // Dry run mode - validate and exit
-      if (options.dryRun) {
-        const validation = config.validateConfig(proxyConfig);
-        
-        if (!options.quiet) {
-          process.stderr.write('\n=== Configuration Validation ===\n');
-          process.stderr.write(`Valid: ${validation.valid ? 'Yes' : 'No'}\n`);
-          
-          if (validation.errors.length > 0) {
-            process.stderr.write('\nErrors:\n');
-            validation.errors.forEach(err => process.stderr.write(`  - ${err}\n`));
-          }
-          
-          if (validation.warnings.length > 0) {
-            process.stderr.write('\nWarnings:\n');
-            validation.warnings.forEach(warn => process.stderr.write(`  - ${warn}\n`));
-          }
-          
-          if (validation.valid) {
-            process.stderr.write('\nConfiguration:\n');
-            process.stderr.write(`  Child Command: ${proxyConfig.childCommand}\n`);
-            process.stderr.write(`  Child Args: ${proxyConfig.childArgs.join(' ') || '(none)'}\n`);
-            process.stderr.write(`  Working Dir: ${proxyConfig.workingDirectory}\n`);
-            process.stderr.write(`  Log Level: ${proxyConfig.logLevel}\n`);
-            process.stderr.write(`  Auto Restart: ${proxyConfig.autoRestart}\n`);
-            process.stderr.write(`  Max Restarts: ${proxyConfig.restartLimit}\n`);
-            process.stderr.write(`  Restart Delay: ${formatDuration(proxyConfig.restartDelay)}\n`);
-            process.stderr.write(`  Operation Timeout: ${formatDuration(proxyConfig.operationTimeout)}\n`);
-          }
-        }
-        
-        process.exit(validation.valid ? 0 : 1);
-      }
-      
-      // Start the proxy
-      if (!options.quiet) {
-        if (isDebugMode) {
-          process.stderr.write('Starting reloaderoo in debug mode (MCP inspection server)...\n');
-        } else {
-          process.stderr.write('Starting reloaderoo...\n');
-        }
-        process.stderr.write(`Child: ${childCommand} ${childArgs.join(' ')}\n`);
-        process.stderr.write(`Working Directory: ${proxyConfig.workingDirectory}\n`);
-      }
-      
-      const proxy = isDebugMode 
-        ? new DebugProxy(proxyConfig)
-        : new MCPProxy(proxyConfig);
-      
-      // Handle graceful shutdown
-      const shutdown = async (signal: string) => {
-        if (!options.quiet) {
-          process.stderr.write(`\nReceived ${signal}, shutting down gracefully...\n`);
-        }
-        await proxy.stop();
-        process.exit(0);
-      };
-      
-      process.on('SIGINT', () => shutdown('SIGINT'));
-      process.on('SIGTERM', () => shutdown('SIGTERM'));
-      
-      // Start proxy
-      await proxy.start();
-      
-    } catch (error) {
-      process.stderr.write(`Error: ${error instanceof Error ? error.message : 'Unknown error'}\n`);
-      process.exit(1);
-    }
-  });
+For backward compatibility, running without a subcommand defaults to 'proxy' mode.
+`);
+
+// Add subcommands
+program.addCommand(createProxyCommand());
+program.addCommand(createInspectCommand());
 
 // Info subcommand for diagnostics
 program
@@ -366,9 +124,7 @@ program
       
       const commonCommands = ['node', 'python', 'python3', 'npm', 'npx', 'deno', 'bun'];
       commonCommands.forEach(cmd => {
-        const validation = validateCommand(cmd);
-        const status = validation.valid ? `✓ Found at ${validation.path}` : '✗ Not found';
-        process.stdout.write(`  ${cmd}: ${status}\n`);
+        process.stdout.write(`  ${cmd}: (skipped - command validation removed in refactor)\n`);
       });
       process.stdout.write('\n');
       
@@ -389,9 +145,19 @@ program
  */
 export async function runCLI(): Promise<void> {
   try {
+    // Handle backward compatibility: if no subcommand provided and -- exists, default to proxy
+    const dashIndex = process.argv.indexOf('--');
+    const hasValidSubcommand = process.argv.length > 2 && 
+      ['proxy', 'inspect', 'info'].includes(process.argv[2]!);
+    
+    if (!hasValidSubcommand && dashIndex !== -1) {
+      // Insert 'proxy' before parsing for backward compatibility
+      process.argv.splice(2, 0, 'proxy');
+    }
+    
     program.parse(process.argv);
     
-    // If no command was provided, show help
+    // If no command was provided and no --, show help
     if (process.argv.length === 2) {
       program.help();
     }

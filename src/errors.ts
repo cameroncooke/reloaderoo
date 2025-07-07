@@ -5,7 +5,7 @@
  * error classification, retry logic, and integration with the logging system.
  */
 
-import { logger } from './logger.js';
+import { logger } from './mcp-logger.js';
 import { ProxyErrorCode } from './types.js';
 import type {
   JSONRPCError,
@@ -245,13 +245,13 @@ export class ProxyErrorHandler {
     const level = this.getErrorLogLevel(error);
     const errorInfo = this.formatErrorForLogging(error, context);
 
-    logger[level](errorInfo, 'Error occurred in proxy');
+    logger[level]('Error occurred in proxy', errorInfo);
   }
 
   /**
    * Determine appropriate log level for error
    */
-  private getErrorLogLevel(error: unknown): 'debug' | 'info' | 'warn' | 'error' | 'fatal' {
+  private getErrorLogLevel(error: unknown): 'debug' | 'info' | 'warn' | 'error' | 'critical' {
     if (isProxyError(error)) {
       const errorLevels = [ProxyErrorCode.CHILD_CRASHED, ProxyErrorCode.RESTART_LIMIT_EXCEEDED];
       const warnLevels = [ProxyErrorCode.CHILD_UNAVAILABLE, ProxyErrorCode.OPERATION_TIMEOUT];

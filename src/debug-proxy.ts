@@ -8,10 +8,8 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { spawn } from 'child_process';
-import type { ChildProcess } from 'child_process';
+import { SimpleClient } from './cli/simple-client.js';
+import type { SimpleClientConfig } from './cli/simple-client.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
@@ -26,14 +24,20 @@ import type { ProxyConfig } from './types.js';
 export class DebugProxy {
   private readonly config: ProxyConfig;
   private readonly server: Server;
-  private childClient: Client | null = null;
-  private childTransport: StdioClientTransport | null = null;
-  private childProcess: ChildProcess | null = null;
+  private readonly clientConfig: SimpleClientConfig;
   private isShuttingDown = false;
-  private childServerInfo: any = null;
 
   constructor(config: ProxyConfig) {
     this.config = config;
+    
+    // Create SimpleClient config for child server
+    this.clientConfig = {
+      command: config.childCommand,
+      args: config.childArgs,
+      workingDirectory: config.workingDirectory,
+      environment: config.environment,
+      timeout: config.operationTimeout
+    };
     
     // Create debug server with inspection tools
     this.server = new Server(
@@ -61,9 +65,6 @@ export class DebugProxy {
       childArgs: this.config.childArgs
     });
 
-    // Start child server first
-    await this.startChildServer();
-
     // Connect debug server to stdio
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
@@ -87,93 +88,12 @@ export class DebugProxy {
     logger.info('Stopping Reloaderoo debug mode');
 
     try {
-      await this.stopChildServer();
       await this.server.close();
     } catch (error) {
       logger.error('Error during shutdown', { error });
     }
   }
 
-  /**
-   * Start the child MCP server
-   */
-  private async startChildServer(): Promise<void> {
-    await this.stopChildServer();
-
-    logger.info('Starting child MCP server for inspection', {
-      command: this.config.childCommand,
-      args: this.config.childArgs
-    });
-
-    // CRITICAL FIX: Spawn child process with pipes, NOT inherited stdio
-    // This prevents stdio conflict with debug proxy
-    const childProcess = spawn(this.config.childCommand, this.config.childArgs, {
-      stdio: ['pipe', 'pipe', 'pipe'], // Use pipes instead of inherited stdio
-      env: { ...process.env, ...this.config.environment },
-      cwd: this.config.workingDirectory
-    });
-
-    if (!childProcess.stdout || !childProcess.stdin) {
-      throw new Error('Failed to create child process pipes');
-    }
-
-    // Store child process reference for cleanup and stderr access
-    this.childProcess = childProcess;
-
-    // Create custom transport using the spawned process pipes
-    this.childTransport = new StdioClientTransport({
-      reader: childProcess.stdout,
-      writer: childProcess.stdin
-    } as any);
-
-    this.childClient = new Client(
-      {
-        name: 'reloaderoo-inspector',
-        version: '1.0.0'
-      },
-      {
-        capabilities: {}
-      }
-    );
-
-    // Connect to child via stdio
-    await this.childClient.connect(this.childTransport);
-
-    // Set up stderr capture from our direct child process reference
-    if (childProcess.stderr) {
-      logger.debug('Setting up stderr capture from child process', undefined, 'RELOADEROO');
-      childProcess.stderr.on('data', (data: Buffer) => {
-        const output = data.toString().trim();
-        if (output) {
-          logger.info(output, undefined, 'CHILD-MCP');
-        }
-      });
-    } else {
-      logger.debug('No stderr available from child process', undefined, 'RELOADEROO');
-    }
-
-    // Store server info for later inspection
-    // The client doesn't expose server info directly, we'll get it from tools/resources/prompts
-    this.childServerInfo = {
-      protocolVersion: '2024-11-05',
-      capabilities: {},
-      serverInfo: { name: 'unknown', version: 'unknown' }
-    };
-    
-    // Try to get capabilities by querying available features
-    try {
-      const tools = await this.childClient.listTools();
-      this.childServerInfo.capabilities.tools = {};
-      logger.debug('Child server supports tools', { count: tools.tools?.length || 0 });
-    } catch (error) {
-      logger.debug('Child server does not support tools');
-    }
-
-    logger.info('Connected to child MCP server for inspection', {
-      serverName: this.childServerInfo?.serverInfo?.name,
-      serverVersion: this.childServerInfo?.serverInfo?.version
-    });
-  }
 
   /**
    * Send notifications about available capabilities
@@ -186,89 +106,11 @@ export class DebugProxy {
       });
       
       logger.debug('Sent tools list changed notification');
-
-      // Check if child server supports resources and send notification if so
-      if (this.childClient) {
-        try {
-          await this.childClient.listResources();
-          await this.server.notification({
-            method: 'notifications/resources/list_changed'
-          });
-          logger.debug('Sent resources list changed notification');
-        } catch (error) {
-          // Child server doesn't support resources, no notification needed
-        }
-
-        // Check if child server supports prompts and send notification if so  
-        try {
-          await this.childClient.listPrompts();
-          await this.server.notification({
-            method: 'notifications/prompts/list_changed'
-          });
-          logger.debug('Sent prompts list changed notification');
-        } catch (error) {
-          // Child server doesn't support prompts, no notification needed
-        }
-      }
     } catch (error) {
       logger.debug('Error sending capability notifications', { error });
     }
   }
 
-  /**
-   * Stop the child MCP server
-   */
-  private async stopChildServer(): Promise<void> {
-    if (this.childClient) {
-      try {
-        await this.childClient.close();
-      } catch (error) {
-        logger.debug('Error closing child client', { error });
-      }
-      this.childClient = null;
-    }
-
-    if (this.childTransport) {
-      try {
-        await this.childTransport.close();
-      } catch (error) {
-        logger.debug('Error closing child transport', { error });
-      }
-      this.childTransport = null;
-    }
-
-    // Properly terminate the child process
-    if (this.childProcess) {
-      try {
-        logger.debug('Terminating child process', { pid: this.childProcess.pid });
-        
-        // Send SIGTERM first for graceful shutdown
-        this.childProcess.kill('SIGTERM');
-        
-        // Wait a bit for graceful shutdown
-        await new Promise<void>((resolve) => {
-          const timeout = setTimeout(() => {
-            // Force kill if still running after timeout
-            if (this.childProcess && !this.childProcess.killed) {
-              logger.debug('Force killing child process', { pid: this.childProcess.pid });
-              this.childProcess.kill('SIGKILL');
-            }
-            resolve();
-          }, 5000);
-          
-          this.childProcess?.once('exit', () => {
-            clearTimeout(timeout);
-            resolve();
-          });
-        });
-      } catch (error) {
-        logger.debug('Error terminating child process', { error });
-      }
-      this.childProcess = null;
-    }
-
-    this.childServerInfo = null;
-  }
 
   /**
    * Setup debug tool handlers
@@ -377,23 +219,9 @@ export class DebugProxy {
           }
         ];
 
-      // Get child server tools and combine with debug tools
-      let childTools: any[] = [];
-      if (this.childClient) {
-        try {
-          const childResult = await this.childClient.listTools();
-          childTools = childResult.tools || [];
-          logger.debug('Child server supports tools', { count: childTools.length });
-        } catch (error) {
-          logger.debug('Child server does not support tools', { error });
-        }
-      }
-
-      // Combine debug tools and child tools
-      const allTools = [...debugTools, ...childTools];
-      
+      // Only return debug/inspection tools
       return {
-        tools: allTools
+        tools: debugTools
       };
     });
 
@@ -419,64 +247,28 @@ export class DebugProxy {
         case 'ping':
           return this.handlePing();
         default:
-          // If it's not a debug tool, proxy to child server
-          return this.proxyToolToChild(name, args);
+          // Unknown debug tool
+          return {
+            content: [{
+              type: 'text',
+              text: `Unknown debug tool: ${name}. Available tools: list_tools, call_tool, list_resources, read_resource, list_prompts, get_prompt, get_server_info, ping`
+            }],
+            isError: true
+          };
       }
     });
   }
 
-  /**
-   * Proxy tool call to child server (for non-debug tools)
-   */
-  private async proxyToolToChild(name: string, args: any): Promise<CallToolResult> {
-    logger.debug(`Proxying tool call: ${name}`, { arguments: args }, 'PROXY-TOOL');
-    
-    if (!this.childClient) {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Error: Child server not connected'
-        }],
-        isError: true
-      };
-    }
-
-    try {
-      const result = await this.childClient.callTool({
-        name,
-        arguments: args || {}
-      });
-      
-      logger.debug(`Tool call completed: ${name}`, undefined, 'PROXY-TOOL');
-      return result as CallToolResult;
-    } catch (error) {
-      logger.debug(`Tool call failed: ${name}`, { error: error instanceof Error ? error.message : 'Unknown error' }, 'PROXY-TOOL');
-      return {
-        content: [{
-          type: 'text',
-          text: `Error calling tool '${name}': ${error instanceof Error ? error.message : 'Unknown error'}`
-        }],
-        isError: true
-      };
-    }
-  }
 
   /**
    * Handle list_tools debug tool
    */
   private async handleListTools(): Promise<CallToolResult> {
-    if (!this.childClient) {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Error: Child server not connected'
-        }],
-        isError: true
-      };
-    }
-
     try {
-      const result = await this.childClient.listTools();
+      const result = await SimpleClient.executeOperation(this.clientConfig, async (client) => {
+        const tools = await client.listTools();
+        return { tools };
+      });
       return {
         content: [{
           type: 'text',
@@ -498,16 +290,6 @@ export class DebugProxy {
    * Handle call_tool debug tool
    */
   private async handleCallTool(args: any): Promise<CallToolResult> {
-    if (!this.childClient) {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Error: Child server not connected'
-        }],
-        isError: true
-      };
-    }
-
     const toolName = args?.name;
     if (!toolName) {
       return {
@@ -521,9 +303,8 @@ export class DebugProxy {
 
     try {
       const startTime = Date.now();
-      const result = await this.childClient.callTool({
-        name: toolName,
-        arguments: args.arguments || {}
+      const result = await SimpleClient.executeOperation(this.clientConfig, async (client) => {
+        return await client.callTool(toolName, args.arguments || {});
       });
       const duration = Date.now() - startTime;
 
@@ -554,18 +335,11 @@ export class DebugProxy {
    * Handle list_resources debug tool
    */
   private async handleListResources(): Promise<CallToolResult> {
-    if (!this.childClient) {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Error: Child server not connected'
-        }],
-        isError: true
-      };
-    }
-
     try {
-      const result = await this.childClient.listResources();
+      const result = await SimpleClient.executeOperation(this.clientConfig, async (client) => {
+        const resources = await client.listResources();
+        return { resources };
+      });
       return {
         content: [{
           type: 'text',
@@ -588,16 +362,6 @@ export class DebugProxy {
    * Handle read_resource debug tool
    */
   private async handleReadResource(args: any): Promise<CallToolResult> {
-    if (!this.childClient) {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Error: Child server not connected'
-        }],
-        isError: true
-      };
-    }
-
     const uri = args?.uri;
     if (!uri) {
       return {
@@ -610,7 +374,9 @@ export class DebugProxy {
     }
 
     try {
-      const result = await this.childClient.readResource({ uri });
+      const result = await SimpleClient.executeOperation(this.clientConfig, async (client) => {
+        return await client.readResource(uri);
+      });
       return {
         content: [{
           type: 'text',
@@ -632,18 +398,11 @@ export class DebugProxy {
    * Handle list_prompts debug tool
    */
   private async handleListPrompts(): Promise<CallToolResult> {
-    if (!this.childClient) {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Error: Child server not connected'
-        }],
-        isError: true
-      };
-    }
-
     try {
-      const result = await this.childClient.listPrompts();
+      const result = await SimpleClient.executeOperation(this.clientConfig, async (client) => {
+        const prompts = await client.listPrompts();
+        return { prompts };
+      });
       return {
         content: [{
           type: 'text',
@@ -666,16 +425,6 @@ export class DebugProxy {
    * Handle get_prompt debug tool
    */
   private async handleGetPrompt(args: any): Promise<CallToolResult> {
-    if (!this.childClient) {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Error: Child server not connected'
-        }],
-        isError: true
-      };
-    }
-
     const promptName = args?.name;
     if (!promptName) {
       return {
@@ -688,9 +437,8 @@ export class DebugProxy {
     }
 
     try {
-      const result = await this.childClient.getPrompt({
-        name: promptName,
-        arguments: args.arguments || {}
+      const result = await SimpleClient.executeOperation(this.clientConfig, async (client) => {
+        return await client.getPrompt(promptName, args.arguments || {});
       });
       return {
         content: [{
@@ -713,48 +461,43 @@ export class DebugProxy {
    * Handle get_server_info debug tool
    */
   private async handleGetServerInfo(): Promise<CallToolResult> {
-    if (!this.childServerInfo) {
+    try {
+      const result = await SimpleClient.executeOperation(this.clientConfig, async (client) => {
+        return await client.getServerInfo();
+      });
       return {
         content: [{
           type: 'text',
-          text: 'Error: Server info not available. Child server may not be connected.'
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: 'text',
+          text: `Error getting server info: ${error instanceof Error ? error.message : 'Unknown error'}`
         }],
         isError: true
       };
     }
-
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify(this.childServerInfo, null, 2)
-      }]
-    };
   }
 
   /**
    * Handle ping debug tool
    */
   private async handlePing(): Promise<CallToolResult> {
-    if (!this.childClient) {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Error: Child server not connected'
-        }],
-        isError: true
-      };
-    }
-
     try {
       const startTime = Date.now();
-      await this.childClient.ping();
+      const result = await SimpleClient.executeOperation(this.clientConfig, async (client) => {
+        return await client.ping();
+      });
       const latency = Date.now() - startTime;
 
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
-            success: true,
+            success: result,
             latency_ms: latency
           }, null, 2)
         }]

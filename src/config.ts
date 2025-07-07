@@ -73,7 +73,7 @@ function which(command: string): string | null {
   const paths = (process.env['PATH'] || '').split(delimiter);
   
   for (const dir of paths) {
-    if (!dir) continue;
+    if (!dir || dir.trim() === '') continue;
     
     for (const ext of pathExt) {
       const fullPath = resolve(dir, command + ext);

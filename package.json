@@ -31,7 +31,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "reloaderoo": "dist/index.js"
+    "reloaderoo": "dist/bin/reloaderoo.js"
   },
   "files": [
     "dist/",
@@ -49,7 +49,8 @@
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run prepare-release",
     "inspector": "pkill -f '@modelcontextprotocol/inspector' || true && DANGEROUSLY_OMIT_AUTH=true npx @modelcontextprotocol/inspector",
-    "inspector:test": "npm run build && npm run inspector node 'dist/bin/reloaderoo.js --child-cmd \"node test-server-sdk.js\"'"
+    "inspector:test": "npm run build && npm run inspector node 'dist/bin/reloaderoo.js -- node test-server-sdk.js'",
+    "inspector:inspect": "npm run build && npm run inspector node 'dist/bin/reloaderoo.js inspect mcp -- node test-server-sdk.js'"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.3",

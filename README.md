@@ -115,7 +115,54 @@ Options:
   
 Commands:
   info                            Show system information and diagnostics
+  inspect <subcommand>            Inspect and debug MCP servers
+    list-tools                    List all available tools
+    list-resources                List all available resources  
+    list-prompts                  List all available prompts
+    call-tool <name>              Call a specific tool
+    read-resource <uri>           Read a specific resource
+    get-prompt <name>             Get a specific prompt
+    server-info                   Get server information
+    ping                          Check server connectivity
+    mcp                           Start MCP inspection server
 ```
+
+## 🔍 Inspection & Debugging
+
+reloaderoo includes powerful inspection tools for debugging MCP servers:
+
+### CLI Inspection (One-time queries)
+```bash
+# List all tools in your server
+reloaderoo inspect list-tools -- node my-server.js
+
+# Call a specific tool
+reloaderoo inspect call-tool echo --params '{"message":"hello"}' -- node my-server.js
+
+# Get server information
+reloaderoo inspect server-info -- node my-server.js
+
+# Check server connectivity
+reloaderoo inspect ping -- node my-server.js
+```
+
+### MCP Inspection Server
+For interactive debugging through MCP clients:
+
+```bash
+# Start reloaderoo as an inspection server
+reloaderoo inspect mcp -- node my-server.js
+```
+
+This exposes 8 debug tools through the MCP protocol:
+- `list_tools` - List all server tools
+- `call_tool` - Call any server tool
+- `list_resources` - List all server resources
+- `read_resource` - Read any server resource
+- `list_prompts` - List all server prompts
+- `get_prompt` - Get any server prompt  
+- `get_server_info` - Get comprehensive server info
+- `ping` - Test server connectivity
 
 ## 🏗️ How It Works
 

@@ -22,7 +22,7 @@ import {
   type ProxyCapabilities,
   RESTART_SERVER_TOOL
 } from './types.js';
-import { logger } from './logger.js';
+import { logger } from './mcp-logger.js';
 
 /**
  * CapabilityAugmenter handles the modification of InitializeResult responses
