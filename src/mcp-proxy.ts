@@ -227,6 +227,8 @@ export class MCPProxy {
         logger.debug('Error closing child client', { error });
       }
       this.childClient = null;
+      this.childTools = [];
+      this.updateHandlersWithChildClient();
     }
 
     if (this.childTransport) {
@@ -255,6 +257,9 @@ export class MCPProxy {
 
       this.childTools = toolsResult.tools || [];
       
+      // Update handlers with new child client and tools
+      this.updateHandlersWithChildClient();
+      
       logger.debug('Mirrored child capabilities', {
         toolCount: this.childTools.length,
         toolNames: this.childTools.map(t => t.name)
@@ -274,6 +279,7 @@ export class MCPProxy {
       if (error instanceof McpError && error.code === ErrorCode.MethodNotFound) {
         logger.warn('Child server does not support tools/list - continuing with empty tool list');
         this.childTools = [];
+        this.updateHandlersWithChildClient();
         
         if (this.restartInProgress) {
           this.restartInProgress = false;
