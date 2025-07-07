@@ -50,8 +50,12 @@ function getVersion(): string {
       }
     }
     
+    // No package.json found in any location
+    process.stderr.write('Warning: Could not find package.json in any expected location\n');
     return '0.0.0';
-  } catch {
+  } catch (error) {
+    // Unexpected error during version lookup
+    process.stderr.write(`Warning: Could not read package.json: ${error instanceof Error ? error.message : 'Unknown error'}\n`);
     return '0.0.0';
   }
 }

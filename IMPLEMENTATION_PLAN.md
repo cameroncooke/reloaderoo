@@ -31,7 +31,7 @@ This plan addresses all issues identified in the comprehensive code analysis rep
 | 🔴 HIGH | [Task 1](#task-1) - Eliminate Code Duplication | ✅ COMPLETED | Claude | 2025-01-06 |
 | 🔴 HIGH | [Task 2](#task-2) - Add Core Component Tests | ✅ COMPLETED | Claude | 2025-01-06 |
 | 🟡 MEDIUM | [Task 3](#task-3) - Fix Race Condition | ✅ COMPLETED | Claude | 2025-01-06 |
-| 🟡 MEDIUM | [Task 4](#task-4) - Improve Error Visibility | ⏳ PENDING | - | - |
+| 🟡 MEDIUM | [Task 4](#task-4) - Improve Error Visibility | ✅ COMPLETED | Claude | 2025-01-06 |
 | 🟡 MEDIUM | [Task 5](#task-5) - Resource Cleanup | ⏳ PENDING | - | - |
 | 🟢 LOW | [Task 6](#task-6) - Remove Dead Code | ⏳ PENDING | - | - |
 | 🟢 LOW | [Task 7](#task-7) - Review String Usage (Optional) | ⏳ PENDING | - | - |
@@ -212,7 +212,7 @@ This plan addresses all issues identified in the comprehensive code analysis rep
 
 ### Task 4: Improve Error Visibility in CLI
 
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETED
 **Priority:** MEDIUM  
 **Estimated Time:** 30 minutes
 **File:** `src/bin/reloaderoo.ts`
@@ -242,10 +242,10 @@ This plan addresses all issues identified in the comprehensive code analysis rep
    - Verify graceful fallback
 
 #### Acceptance Criteria
-- [ ] Warning logged to stderr on package.json read failure
-- [ ] Still returns fallback version '0.0.0'
-- [ ] No breaking changes to version display
-- [ ] Error message is helpful for debugging
+- [x] Warning logged to stderr on package.json read failure (**Added warning for both missing files and read errors**)
+- [x] Still returns fallback version '0.0.0' (**Preserves graceful fallback behavior**)
+- [x] No breaking changes to version display (**CLI functionality unchanged, just adds warnings**)
+- [x] Error message is helpful for debugging (**Includes specific error details and context**)
 
 ---
 
@@ -430,6 +430,7 @@ This plan addresses all issues identified in the comprehensive code analysis rep
 | 2025-01-06 | Task 1 | 45 min | PENDING → COMPLETED | Created `createInspectionAction` wrapper, eliminated 84 lines of duplication, all tests pass |
 | 2025-01-06 | Task 2 | 90 min | PENDING → COMPLETED | Added comprehensive MCPProxy tests, 14 test cases covering constructor, config, lifecycle, error handling |
 | 2025-01-06 | Task 3 | 60 min | PENDING → COMPLETED | Fixed restart handler race condition, added atomic flag setting, 8 comprehensive concurrent request tests |
+| 2025-01-06 | Task 4 | 30 min | PENDING → COMPLETED | Improved CLI error visibility, added stderr warnings for package.json failures, 9 error handling tests |
 
 ### Completion Checklist
 
