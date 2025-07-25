@@ -108,7 +108,7 @@ export class SimpleClient {
     let buffer = '';
     this.childProcess.stdout?.on('data', (data) => {
       buffer += data.toString();
-      this.processBuffer(buffer);
+      buffer = this.processBuffer(buffer);
     });
 
     this.connected = true;
@@ -198,10 +198,12 @@ export class SimpleClient {
 
   /**
    * Process incoming data buffer for JSON-RPC responses
+   * Returns the unprocessed portion of the buffer
    */
-  private processBuffer(buffer: string): void {
+  private processBuffer(buffer: string): string {
     const lines = buffer.split('\n');
     
+    // Process all complete lines (all but the last, which might be incomplete)
     for (let i = 0; i < lines.length - 1; i++) {
       const line = lines[i]?.trim();
       if (!line) continue;
@@ -213,6 +215,9 @@ export class SimpleClient {
         logger.debug('Failed to parse JSON-RPC response', { line, error });
       }
     }
+    
+    // Return the last line (unprocessed remainder)
+    return lines[lines.length - 1] || '';
   }
 
   /**
