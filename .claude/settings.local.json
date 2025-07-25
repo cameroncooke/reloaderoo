@@ -10,7 +10,8 @@
       "Bash(mkdir:*)",
       "WebFetch(domain:modelcontextprotocol.io)",
       "Bash(true)",
-      "mcp__reloaderooTest__call_tool"
+      "mcp__reloaderooTest__call_tool",
+      "Bash(ls:*)"
     ],
     "deny": []
   }

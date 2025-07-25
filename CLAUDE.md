@@ -4,38 +4,192 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Reloaderoo** is a transparent MCP (Model Context Protocol) development wrapper that acts as a proxy between MCP clients (like Claude Code CLI) and MCP servers. It enables hot-reloading/restarting of MCP servers during development without losing client session state.
+**Reloaderoo** is a dual-purpose MCP (Model Context Protocol) tool that serves as both:
 
-**Current Status:** Fully implemented and working. The project includes both proxy functionality and inspection tools.
+1. **MCP Server (Proxy Mode)** - A transparent development proxy for hot-reloading MCP servers
+2. **MCP Client/CLI Tool (Inspection Mode)** - A debugging interface for inspecting MCP servers
 
-## Project Architecture
+## 🔄 Proxy Mode (Default Mode)
 
-Reloaderoo operates in two distinct modes:
+**Primary Purpose:** Hot-reloading MCP server development with transparent forwarding
 
-### 1. Proxy Mode (`reloaderoo proxy` or `reloaderoo`)
+### Architecture: Proxy Mode
+
 ```
-MCP Client ↔ Reloaderoo Proxy ↔ Child MCP Server
-(e.g., Claude)  (transparent proxy)  (your-server)
+MCP Client ↔ Reloaderoo Proxy (MCP Server) ↔ Child MCP Server
+(e.g., Claude)   (transparent proxy + restart_server tool)   (your-server)
 ```
-**Tools Exposed:** All child server tools + `restart_server` tool
-**Purpose:** Hot-reloading with transparent forwarding
 
-### 2. Inspection Mode (`reloaderoo inspect mcp`)
+#### Key Characteristics:
+- **IS an MCP Server** - Reloaderoo itself acts as an MCP server
+- **Transparent Forwarding** - All MCP messages pass through seamlessly
+- **Capability Augmentation** - Adds `restart_server` tool to child server's capabilities
+- **Session Persistence** - Client connection remains active during server restarts
+- **Default Mode** - Runs when using `reloaderoo` or `reloaderoo proxy`
+
+#### Core Components (Proxy Mode):
+- `MCPProxy` - Main proxy implementation
+- `ProcessManager` - Child server lifecycle management
+- `MessageRouter` - JSON-RPC message forwarding
+- `CapabilityAugmenter` - Modifies `InitializeResult` to add proxy capabilities
+- `RestartHandler` - Implements the `restart_server` tool
+
+#### Message Flow (Proxy Mode):
+1. Client sends MCP request → Reloaderoo Proxy
+2. **If `restart_server` tool call:** Handle internally, restart child, notify client
+3. **All other requests:** Forward to child server → return response to client
+4. **Initialize handshake:** Intercept and add `restart_server` to capabilities
+5. **Notifications:** Send `tools/list_changed` after restarts
+
+#### Usage (Proxy Mode):
+```bash
+# Basic proxy usage (default mode)
+reloaderoo -- node /path/to/my-mcp-server.js
+
+# Explicit proxy mode with options  
+reloaderoo proxy --log-level debug --max-restarts 5 -- node server.js
 ```
-MCP Client ↔ Reloaderoo Inspector ↔ Child MCP Server
-(e.g., Claude)  (8 debug tools only)    (not directly exposed)
+
+#### Configuration for MCP Clients (Proxy Mode):
+```json
+{
+  "mcpServers": {
+    "myDevelopmentServer": {
+      "command": "node",
+      "args": [
+        "/path/to/reloaderoo/dist/bin/reloaderoo.js", 
+        "proxy",
+        "--log-level", "debug",
+        "--",
+        "node", 
+        "/path/to/my-server.js"
+      ]
+    }
+  }
+}
 ```
-**Tools Exposed:** 8 inspection tools only (child tools accessed via `call_tool`)
-**Purpose:** MCP protocol debugging and inspection
 
-### Key Architectural Principles:
-- **Transparent forwarding (Proxy mode):** All MCP JSON-RPC messages are forwarded between client and child server
-- **Capability augmentation (Proxy mode):** Intercepts `initialize` handshake to add `restart_server` tool to child's capabilities
-- **Protocol introspection (Inspection mode):** Exposes MCP protocol operations as tools for debugging
-- **Process lifecycle management:** Manages spawning, restarting, and terminating child MCP server processes
-- **Session persistence:** Client session state persists through server restarts
+## 🔍 Inspection Mode
 
-## Technical Specifications
+**Primary Purpose:** MCP server debugging and development testing
+
+### Dual Interface: CLI + MCP Server
+
+Inspection mode serves **two different use cases**:
+
+#### 1. CLI Interface (Primary Use Case)
+**For AI agents that DON'T need direct MCP access** - Acts as an MCP client via CLI
+
+```bash
+# AI agents can use these commands directly without MCP configuration
+reloaderoo inspect list-tools -- node my-server.js
+reloaderoo inspect call-tool echo --params '{"message":"test"}' -- node my-server.js
+reloaderoo inspect server-info -- node my-server.js
+```
+
+**Benefits for AI Agents:**
+- ✅ No MCP server configuration required in AI session
+- ✅ Direct CLI access to any MCP server for testing
+- ✅ Perfect for development debugging workflows
+- ✅ JSON formatted responses for easy parsing
+
+#### 2. MCP Server Interface (Secondary Use Case)  
+**For MCP clients that need protocol access** - Reloaderoo as inspection MCP server
+
+```bash
+# Start inspection MCP server
+reloaderoo inspect mcp -- node /path/to/my-server.js
+```
+
+### Architecture: Inspection Mode
+
+#### CLI Interface Architecture:
+```
+AI Agent ↔ CLI Commands ↔ Reloaderoo Inspector ↔ Child MCP Server
+         (direct CLI calls)  (acts as MCP client)   (your-server)
+```
+
+#### MCP Server Interface Architecture:
+```
+MCP Client ↔ Reloaderoo Inspector (MCP Server) ↔ Child MCP Server  
+(e.g., Claude)  (8 debug tools only)              (not directly exposed)
+```
+
+#### Key Characteristics:
+- **CLI-First Design** - Primarily designed for command-line debugging
+- **MCP Client Functionality** - Reloaderoo acts as a client to your MCP server
+- **Debug Tools Only** - Exposes 8 inspection tools, child server tools accessed via `call_tool`
+- **Development Focus** - Specifically for MCP server development and debugging
+
+### Complete Inspection Tools List
+
+#### Available Tools (8 total):
+
+1. **`list_tools`** - List all available tools from child server
+   ```bash
+   reloaderoo inspect list-tools -- node server.js
+   ```
+
+2. **`call_tool`** - Call any tool on the child server
+   ```bash
+   reloaderoo inspect call-tool <tool-name> --params '{"param":"value"}' -- node server.js
+   ```
+
+3. **`list_resources`** - List all available resources from child server
+   ```bash
+   reloaderoo inspect list-resources -- node server.js
+   ```
+
+4. **`read_resource`** - Read a specific resource from child server
+   ```bash
+   reloaderoo inspect read-resource <resource-uri> -- node server.js
+   ```
+
+5. **`list_prompts`** - List all available prompts from child server
+   ```bash
+   reloaderoo inspect list-prompts -- node server.js
+   ```
+
+6. **`get_prompt`** - Get a specific prompt from child server
+   ```bash
+   reloaderoo inspect get-prompt <prompt-name> -- node server.js
+   ```
+
+7. **`get_server_info`** - Get comprehensive server information and capabilities
+   ```bash
+   reloaderoo inspect server-info -- node server.js
+   ```
+
+8. **`ping`** - Test connectivity and health of child server
+   ```bash
+   reloaderoo inspect ping -- node server.js
+   ```
+
+#### Core Components (Inspection Mode):
+- `DebugProxy` - MCP server that exposes inspection tools
+- `SimpleClient` - Lightweight MCP client for connecting to child servers
+- `OutputFormatter` - Formats CLI responses with metadata and error handling
+
+#### CLI Output Format:
+```json
+{
+  "success": true,
+  "data": {
+    // Tool/resource/prompt data
+  },
+  "metadata": {
+    "command": "list-tools", 
+    "timestamp": "2025-07-25T12:00:00.000Z",
+    "duration": 1200
+  }
+}
+```
+
+---
+
+## 🏗️ SHARED ARCHITECTURE COMPONENTS
+
+### Technical Specifications
 
 **Current Stack:**
 - **Language:** Node.js (published to npm as `reloaderoo`)
@@ -43,116 +197,29 @@ MCP Client ↔ Reloaderoo Inspector ↔ Child MCP Server
 - **Transport:** JSON-RPC over stdio
 - **Platform:** Primary macOS support, POSIX-compatible for Linux
 
-**Core Components:**
-- `MCPProxy` - Main proxy implementation for hot-reloading
-- `DebugProxy` - MCP server that exposes inspection tools
-- `SimpleClient` - Lightweight MCP client for CLI and debugging
-- `ProcessManager` - Handles child server lifecycle
-- `MessageRouter` - Forwards JSON-RPC messages
-- `CapabilityAugmenter` - Modifies `InitializeResult` to add proxy capabilities
-- `RestartHandler` - Implements the `restart_server` tool functionality
+### Configuration
 
-## Key Features
-
-1. **Hot-Reloading Proxy Mode**
-   - Transparent proxy between MCP client and server
-   - Adds `restart_server` tool to any MCP server
-   - Preserves client session during server restarts
-   - Auto-restart on child process crashes
-
-2. **Inspection Mode**
-   - MCP server that exposes debugging tools
-   - 8 inspection tools: list_tools, call_tool, list_resources, read_resource, list_prompts, get_prompt, get_server_info, ping
-   - Can inspect any MCP server via CLI or MCP protocol
-
-3. **CLI Interface**
-   - Direct inspection commands for debugging
-   - Consistent API design across all modes
-
-## Usage Patterns
-
-### Proxy Mode (Hot-Reloading)
-```bash
-# Basic proxy usage
-reloaderoo -- node /path/to/my-mcp-server.js
-
-# With options
-reloaderoo --log-level debug --max-restarts 5 -- node server.js
-```
-
-### Inspection Mode (MCP Server)
-```bash
-# Start MCP inspection server
-reloaderoo inspect mcp -- node /path/to/my-mcp-server.js
-```
-
-### CLI Inspection
-```bash
-# Direct CLI inspection (runs once and exits)
-reloaderoo inspect list-tools -- node server.js
-reloaderoo inspect call-tool echo --params '{"message":"hello"}' -- node server.js
-```
-
-## Configuration
-
-Configuration via environment variables:
-- `MCPDEV_PROXY_LOG_LEVEL` - Set log level
-- `MCPDEV_PROXY_LOG_FILE` - Custom log file path
-- `MCPDEV_PROXY_RESTART_LIMIT` - Max restart attempts
-- `MCPDEV_PROXY_AUTO_RESTART` - Enable/disable auto-restart
-- `MCPDEV_PROXY_TIMEOUT` - Operation timeout
-- `MCPDEV_PROXY_DEBUG_MODE` - Enable debug mode
-
-## Performance
-
-- **Latency:** <10ms overhead per request
-- **Memory:** <100MB for proxy process
-- **Restart time:** <5 seconds + child initialization time
-- **Crash recovery:** Auto-restart with crash-loop protection
-
-## Architecture Notes
-
-### Unified Client Implementation
-The project uses a single `SimpleClient` implementation for both:
-- CLI inspection commands (`reloaderoo inspect list-tools`)
-- MCP inspection server (`reloaderoo inspect mcp`)
-
-This ensures consistency and eliminates code duplication.
-
-### Message Flow
-- `initialize` handshake interception and modification
-- `tools/call` interception for `restart_server`
-- Notification sending after restarts (`tools/list_changed`, etc.)
-- Error responses during child unavailability
-- Request queuing/rejection during restart operations
-
-## Testing
-
-### MCP Inspector Integration
-Use the MCP Inspector for real-world testing:
+All modes support the same environment variables:
 
 ```bash
-# Start MCP Inspector
-npm run inspector
+# Logging Configuration
+MCPDEV_PROXY_LOG_LEVEL=debug           # Log level (debug, info, notice, warning, error, critical)
+MCPDEV_PROXY_LOG_FILE=/path/to/log     # Custom log file path (default: stderr)
+MCPDEV_PROXY_DEBUG_MODE=true           # Enable debug mode (true/false)
 
-# Test proxy mode
-npm run inspector:test
+# Process Management
+MCPDEV_PROXY_RESTART_LIMIT=5           # Maximum restart attempts (0-10, default: 3)
+MCPDEV_PROXY_AUTO_RESTART=true         # Enable/disable auto-restart (true/false)
+MCPDEV_PROXY_TIMEOUT=30000             # Operation timeout in milliseconds
+MCPDEV_PROXY_RESTART_DELAY=1000        # Delay between restart attempts in milliseconds
 
-# Test inspection mode
-npm run inspector:inspect
+# Child Process Configuration
+MCPDEV_PROXY_CHILD_CMD=node            # Default child command
+MCPDEV_PROXY_CHILD_ARGS="server.js"    # Default child arguments (space-separated)
+MCPDEV_PROXY_CWD=/path/to/directory     # Default working directory
 ```
 
-### Testing Configuration
-- **Workspace Path:** `/Volumes/Developer/Reloaderoo`
-- **Server Command:** `node dist/bin/reloaderoo.js`
-- **Build Requirement:** Always run `npm run build` before testing
-
-### MCP Inspector Setup
-- **Authentication:** Use `DANGEROUSLY_OMIT_AUTH=true` for development
-- **URL:** http://127.0.0.1:6274
-- **Tool Testing:** Focus on tools without required parameters for quick validation
-
-## Development Workflow
+### Development Workflow
 
 1. **Make changes to source code**
 2. **Build:** `npm run build`
@@ -160,9 +227,9 @@ npm run inspector:inspect
 4. **Test:** `npm test`
 5. **Test CLI:** `reloaderoo inspect list-tools -- node test-server-sdk.js`
 6. **Test MCP:** `reloaderoo inspect mcp -- node test-server-sdk.js`
-7. **Test with Inspector:** `npm run inspector:inspect`
+7. **Test Proxy:** Configure MCP client to use proxy mode
 
-## Task Completion Workflow
+### Task Completion Workflow
 
 **After completing each implementation task:**
 1. **Build:** `npm run build` - Verify TypeScript compilation
@@ -172,47 +239,20 @@ npm run inspector:inspect
 5. **Commit:** Create descriptive git commit
 6. **Update Plan:** Mark task as completed in IMPLEMENTATION_PLAN.md
 
-## Important Notes
+### Key Usage Distinctions
 
-### MCP Client Integration
-When using with MCP clients like Claude Code:
-- The MCP server lifecycle is managed by the client application
-- Use the correct binary path: `dist/bin/reloaderoo.js`
-- For inspection mode, use: `reloaderoo inspect mcp -- <child-command>`
-- For proxy mode, use: `reloaderoo -- <child-command>`
+#### When to Use Proxy Mode:
+- ✅ **Hot-reloading development** - When you want to develop MCP servers without client restarts
+- ✅ **Production-like testing** - When you need full MCP protocol compatibility
+- ✅ **Client integration** - When your AI client needs direct MCP server access
 
-### Configuration for Claude Code
-```json
-{
-  "mcpServers": {
-    "myServer": {
-      "command": "node",
-      "args": [
-        "/path/to/reloaderoo/dist/bin/reloaderoo.js",
-        "--",
-        "node",
-        "/path/to/my-server.js"
-      ]
-    }
-  }
-}
-```
+#### When to Use Inspection Mode (CLI):
+- ✅ **MCP server debugging** - When you need to test MCP servers during development
+- ✅ **AI agent debugging** - When AI agents need to inspect MCP servers without MCP config
+- ✅ **Development workflow** - When you need quick CLI access to MCP functionality
+- ✅ **Protocol testing** - When you need to validate MCP server implementations
 
-### For Inspection Mode
-```json
-{
-  "mcpServers": {
-    "reloaderooInspector": {
-      "command": "node",
-      "args": [
-        "/path/to/reloaderoo/dist/bin/reloaderoo.js",
-        "inspect",
-        "mcp",
-        "--",
-        "node",
-        "/path/to/my-server.js"
-      ]
-    }
-  }
-}
-```
+#### When to Use Inspection Mode (MCP Server):
+- ✅ **Protocol debugging** - When you need MCP client access to debug tools
+- ✅ **Interactive inspection** - When you want to expose debug tools through MCP protocol
+- ✅ **Development tooling** - When building MCP-based development tools

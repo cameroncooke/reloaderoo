@@ -77,7 +77,9 @@ export class ProcessManager extends EventEmitter {
 
   /** Start the child MCP server process */
   async spawn(): Promise<void> {
-    if (this.state.state !== ProcessState.STOPPED && this.state.state !== ProcessState.UNAVAILABLE) {
+    if (this.state.state !== ProcessState.STOPPED && 
+        this.state.state !== ProcessState.UNAVAILABLE && 
+        this.state.state !== ProcessState.RESTARTING) {
       throw this.createError(ProxyErrorCode.INVALID_CONFIG, 
         `Cannot spawn process in state: ${this.state.state}`);
     }

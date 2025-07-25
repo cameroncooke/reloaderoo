@@ -50,32 +50,55 @@ describe('Config', () => {
       expect(loadedConfig?.autoRestart).toBe(false);
     });
 
-    it('should handle boolean environment variables correctly', () => {
+    it.each([
+      { input: 'true', expected: true, description: 'string "true"' },
+      { input: '1', expected: true, description: 'string "1"' },
+      { input: 'yes', expected: true, description: 'string "yes"' },
+      { input: 'false', expected: false, description: 'string "false"' },
+      { input: '0', expected: false, description: 'string "0"' },
+      { input: 'no', expected: false, description: 'string "no"' },
+      { input: '', expected: false, description: 'empty string' },
+      { input: 'invalid', expected: false, description: 'invalid string' }
+    ])('should handle boolean env var $description as $expected', ({ input, expected }) => {
       process.env.MCPDEV_PROXY_CHILD_CMD = 'node';
-      process.env.MCPDEV_PROXY_AUTO_RESTART = 'true';
+      process.env.MCPDEV_PROXY_AUTO_RESTART = input;
       
       config.loadConfig();
-      expect(config.getCurrentConfig()?.autoRestart).toBe(true);
-
-      process.env.MCPDEV_PROXY_AUTO_RESTART = '1';
-      config.loadConfig();
-      expect(config.getCurrentConfig()?.autoRestart).toBe(true);
-
-      process.env.MCPDEV_PROXY_AUTO_RESTART = 'yes';
-      config.loadConfig();
-      expect(config.getCurrentConfig()?.autoRestart).toBe(true);
-
-      process.env.MCPDEV_PROXY_AUTO_RESTART = 'false';
-      config.loadConfig();
-      expect(config.getCurrentConfig()?.autoRestart).toBe(false);
+      expect(config.getCurrentConfig()?.autoRestart).toBe(expected);
     });
 
-    it('should handle array environment variables correctly', () => {
+    it.each([
+      { 
+        input: '--version, --help, --verbose', 
+        expected: ['--version', '--help', '--verbose'], 
+        description: 'comma-separated arguments' 
+      },
+      { 
+        input: '--version,--help,--verbose', 
+        expected: ['--version', '--help', '--verbose'], 
+        description: 'comma-separated without spaces' 
+      },
+      { 
+        input: '--version', 
+        expected: ['--version'], 
+        description: 'single argument' 
+      },
+      { 
+        input: '', 
+        expected: [''], 
+        description: 'empty string' 
+      },
+      { 
+        input: '  --version  ,  --help  ', 
+        expected: ['--version', '--help'], 
+        description: 'arguments with extra spaces' 
+      }
+    ])('should handle array env var: $description', ({ input, expected }) => {
       process.env.MCPDEV_PROXY_CHILD_CMD = 'node';
-      process.env.MCPDEV_PROXY_CHILD_ARGS = '--version, --help, --verbose';
+      process.env.MCPDEV_PROXY_CHILD_ARGS = input;
       
       config.loadConfig();
-      expect(config.getCurrentConfig()?.childArgs).toEqual(['--version', '--help', '--verbose']);
+      expect(config.getCurrentConfig()?.childArgs).toEqual(expected);
     });
 
     it('should emit configLoaded event on successful load', async () => {
@@ -100,28 +123,64 @@ describe('Config', () => {
       expect(result.errors).toContain('childCommand is required');
     });
 
-    it('should validate log levels', () => {
+    it.each([
+      { logLevel: 'debug', valid: true, description: 'debug level' },
+      { logLevel: 'info', valid: true, description: 'info level' },
+      { logLevel: 'notice', valid: true, description: 'notice level' },
+      { logLevel: 'warning', valid: true, description: 'warning level' },
+      { logLevel: 'error', valid: true, description: 'error level' },
+      { logLevel: 'critical', valid: true, description: 'critical level' },
+      { logLevel: 'alert', valid: true, description: 'alert level' },
+      { logLevel: 'emergency', valid: true, description: 'emergency level' },
+      { logLevel: 'invalid', valid: false, description: 'invalid level' },
+      { logLevel: 'DEBUG', valid: false, description: 'uppercase level' },
+      { logLevel: 'warn', valid: false, description: 'abbreviated warn level' },
+      { logLevel: '', valid: true, description: 'empty string level (uses default)' },
+      { logLevel: undefined, valid: true, description: 'undefined level (uses default)' }
+    ])('should validate log level: $description', ({ logLevel, valid }) => {
       const result = config.validateConfig({
         childCommand: 'node',
-        logLevel: 'invalid' as any
+        logLevel: logLevel as any
       });
       
-      expect(result.valid).toBe(false);
-      expect(result.errors.some(error => error.includes('Invalid log level'))).toBe(true);
+      expect(result.valid).toBe(valid);
+      if (!valid) {
+        expect(result.errors.some(error => error.includes('Invalid log level'))).toBe(true);
+      }
     });
 
-    it('should validate numeric ranges', () => {
-      const result = config.validateConfig({
+    it.each([
+      { field: 'restartLimit', value: -1, valid: false, errorContains: 'restartLimit must be between 0 and 10' },
+      { field: 'restartLimit', value: 0, valid: true, errorContains: null },
+      { field: 'restartLimit', value: 5, valid: true, errorContains: null },
+      { field: 'restartLimit', value: 10, valid: true, errorContains: null },
+      { field: 'restartLimit', value: 11, valid: false, errorContains: 'restartLimit must be between 0 and 10' },
+      { field: 'operationTimeout', value: 500, valid: false, errorContains: 'operationTimeout must be between 1000ms and 300000ms' },
+      { field: 'operationTimeout', value: 1000, valid: true, errorContains: null },
+      { field: 'operationTimeout', value: 30000, valid: true, errorContains: null },
+      { field: 'operationTimeout', value: 300000, valid: true, errorContains: null },
+      { field: 'operationTimeout', value: 300001, valid: false, errorContains: 'operationTimeout must be between 1000ms and 300000ms' },
+      { field: 'restartDelay', value: -100, valid: false, errorContains: 'restartDelay must be between 0ms and 60000ms' },
+      { field: 'restartDelay', value: 0, valid: true, errorContains: null },
+      { field: 'restartDelay', value: 30000, valid: true, errorContains: null },
+      { field: 'restartDelay', value: 60000, valid: true, errorContains: null },
+      { field: 'restartDelay', value: 60001, valid: false, errorContains: 'restartDelay must be between 0ms and 60000ms' }
+    ])('should validate $field with value $value', ({ field, value, valid, errorContains }) => {
+      const testConfig = {
         childCommand: 'node',
-        restartLimit: -1,
-        operationTimeout: 500,
-        restartDelay: -100
-      });
+        [field]: value
+      };
       
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContain('restartLimit must be between 0 and 10');
-      expect(result.errors).toContain('operationTimeout must be between 1000ms and 300000ms');
-      expect(result.errors).toContain('restartDelay must be between 0ms and 60000ms');
+      const result = config.validateConfig(testConfig);
+      
+      if (valid) {
+        expect(result.valid).toBe(true);
+      } else {
+        expect(result.valid).toBe(false);
+        if (errorContains) {
+          expect(result.errors).toContain(errorContains);
+        }
+      }
     });
 
     it('should validate childArgs array', () => {

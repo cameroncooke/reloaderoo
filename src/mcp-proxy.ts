@@ -373,206 +373,11 @@ export class MCPProxy {
     this.coreHandler.updateChildClient(this.childClient);
   }
 
-  private setupToolHandlers(): void {
-    // List tools - include child tools + restart_server
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const allTools = [
-        ...this.childTools,
-        this.getRestartServerTool()
-      ];
 
-      return { tools: allTools };
-    });
 
-    // Call tool - handle restart_server locally, forward others
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
-      const startTime = Date.now();
 
-      logger.debug(`Proxying tool call: ${name}`, { arguments: args }, 'PROXY-TOOL');
 
-      if (name === PROXY_TOOLS.RESTART_SERVER) {
-        const result = await this.handleRestartServer(args);
-        logger.debug(`Tool call completed: ${name}`, { 
-          duration_ms: Date.now() - startTime,
-          success: !result.isError 
-        }, 'PROXY-TOOL');
-        return result;
-      }
 
-      // Forward to child
-      if (!this.childClient) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Child server not available'
-        );
-      }
-
-      try {
-        const result = await this.childClient.callTool(request.params);
-        logger.debug(`Tool call completed: ${name}`, { 
-          duration_ms: Date.now() - startTime,
-          success: true 
-        }, 'PROXY-TOOL');
-        return result;
-      } catch (error) {
-        logger.debug(`Tool call failed: ${name}`, { 
-          duration_ms: Date.now() - startTime,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        }, 'PROXY-TOOL');
-        throw error;
-      }
-    });
-  }
-
-  /**
-   * Setup prompt-related request handlers
-   */
-  private setupPromptHandlers(): void {
-    // List prompts
-    this.server.setRequestHandler(ListPromptsRequestSchema, async () => {
-      logger.debug('Proxying list prompts request', undefined, 'PROXY-PROMPT');
-      
-      if (!this.childClient) {
-        return { prompts: [] }; // Fallback
-      }
-
-      try {
-        const result = await this.childClient.listPrompts();
-        logger.debug('List prompts completed', { count: result.prompts?.length || 0 }, 'PROXY-PROMPT');
-        return result;
-      } catch (error) {
-        logger.debug('Child does not support prompts', { error }, 'PROXY-PROMPT');
-        return { prompts: [] }; // Fallback
-      }
-    });
-
-    // Get prompt
-    this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-      const { name } = request.params;
-      logger.debug(`Proxying get prompt: ${name}`, undefined, 'PROXY-PROMPT');
-      
-      if (!this.childClient) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Child server not available'
-        );
-      }
-
-      try {
-        const result = await this.childClient.getPrompt(request.params);
-        logger.debug(`Get prompt completed: ${name}`, undefined, 'PROXY-PROMPT');
-        return result;
-      } catch (error) {
-        logger.debug(`Get prompt failed: ${name}`, { error: error instanceof Error ? error.message : 'Unknown error' }, 'PROXY-PROMPT');
-        throw error;
-      }
-    });
-  }
-
-  /**
-   * Setup resource-related request handlers
-   */
-  private setupResourceHandlers(): void {
-    // List resources
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-      logger.debug('Proxying list resources request', undefined, 'PROXY-RESOURCE');
-      
-      if (!this.childClient) {
-        return { resources: [] }; // Fallback
-      }
-
-      try {
-        const result = await this.childClient.listResources();
-        logger.debug('List resources completed', { count: result.resources?.length || 0 }, 'PROXY-RESOURCE');
-        return result;
-      } catch (error) {
-        logger.debug('Child does not support resources', { error }, 'PROXY-RESOURCE');
-        return { resources: [] }; // Fallback
-      }
-    });
-
-    // Read resource
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      const { uri } = request.params;
-      logger.debug(`Proxying read resource: ${uri}`, undefined, 'PROXY-RESOURCE');
-      
-      if (!this.childClient) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Child server not available'
-        );
-      }
-
-      try {
-        const result = await this.childClient.readResource(request.params);
-        logger.debug(`Read resource completed: ${uri}`, undefined, 'PROXY-RESOURCE');
-        return result;
-      } catch (error) {
-        logger.debug(`Read resource failed: ${uri}`, { error: error instanceof Error ? error.message : 'Unknown error' }, 'PROXY-RESOURCE');
-        throw error;
-      }
-    });
-  }
-
-  /**
-   * Setup completion-related request handlers
-   */
-  private setupCompletionHandlers(): void {
-    this.server.setRequestHandler(CompleteRequestSchema, async (request) => {
-      if (!this.childClient) {
-        return { completion: { values: [], total: 0, hasMore: false } }; // Fallback
-      }
-
-      try {
-        return this.childClient.complete(request.params);
-      } catch (error) {
-        logger.debug('Child does not support completion', { error });
-        return { completion: { values: [], total: 0, hasMore: false } }; // Fallback
-      }
-    });
-  }
-
-  /**
-   * Setup sampling-related request handlers  
-   */
-  private setupSamplingHandlers(): void {
-    this.server.setRequestHandler(CreateMessageRequestSchema, async () => {
-      if (!this.childClient) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Child server not available'
-        );
-      }
-
-      // Note: createMessage may not be available in all SDK versions
-      // Forward via generic request if available
-      throw new McpError(
-        ErrorCode.MethodNotFound,
-        'Sampling not supported by child server'
-      );
-    });
-  }
-
-  /**
-   * Setup core protocol handlers
-   */
-  private setupCoreHandlers(): void {
-    // Ping
-    this.server.setRequestHandler(PingRequestSchema, async () => {
-      if (!this.childClient) {
-        return {}; // Fallback - proxy is alive even if child isn't
-      }
-
-      try {
-        await this.childClient.ping();
-        return {};
-      } catch (error) {
-        logger.debug('Child ping failed', { error });
-        return {}; // Fallback - proxy is alive even if child isn't
-      }
-    });
-  }
 
   /**
    * Handle restart_server tool call
@@ -609,26 +414,6 @@ export class MCPProxy {
     }
   }
 
-  /**
-   * Get the restart_server tool definition
-   */
-  private getRestartServerTool(): Tool {
-    return {
-      name: PROXY_TOOLS.RESTART_SERVER,
-      description: 'Restart the child MCP server process for hot-reloading during development',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          force: {
-            type: 'boolean',
-            description: 'Force restart even if server appears healthy',
-            default: false
-          }
-        },
-        required: []
-      }
-    };
-  }
 
   /**
    * Setup error handling for the proxy
@@ -656,6 +441,9 @@ export class MCPProxy {
    */
   private extractServerName(): string {
     const command = this.config.childCommand;
+    if (!command || typeof command !== 'string') {
+      return 'mcp-server';
+    }
     const parts = command.split(/[\\/]/);
     const filename = parts[parts.length - 1] || 'mcp-server';
     return filename.replace(/\.(js|ts|py|rb|go)$/, '') || 'mcp-server';

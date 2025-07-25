@@ -1,19 +1,14 @@
 /**
- * Tests for the MCP proxy functionality
+ * Unit tests for MCPProxy configuration and basic setup
+ * These tests focus on constructor behavior and configuration validation
+ * without testing MCP protocol integration (covered in integration tests)
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { MCPProxy } from '../src/mcp-proxy';
 import { ProxyConfig } from '../src/types';
+import { MCPProxy } from '../src/mcp-proxy';
 
-// Mock the entire MCP SDK to avoid complex import issues
-vi.mock('@modelcontextprotocol/sdk/server/index.js');
-vi.mock('@modelcontextprotocol/sdk/server/stdio.js');
-vi.mock('@modelcontextprotocol/sdk/client/index.js');
-vi.mock('@modelcontextprotocol/sdk/client/stdio.js');
-vi.mock('@modelcontextprotocol/sdk/types.js');
-
-// Mock the logger
+// Mock only the logger to avoid noise in tests
 vi.mock('../src/mcp-logger.js', () => ({
   logger: {
     info: vi.fn(),
@@ -22,6 +17,24 @@ vi.mock('../src/mcp-logger.js', () => ({
     error: vi.fn(),
     fatal: vi.fn()
   }
+}));
+
+// Mock child process spawning to avoid actual process creation
+vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
+  StdioClientTransport: vi.fn().mockImplementation(() => ({
+    close: vi.fn().mockResolvedValue(undefined)
+  }))
+}));
+
+// Mock the Server class but keep it minimal
+vi.mock('@modelcontextprotocol/sdk/server/index.js', () => ({
+  Server: vi.fn().mockImplementation(() => ({
+    setRequestHandler: vi.fn(),
+    notification: vi.fn(),
+    connect: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+    onerror: null
+  }))
 }));
 
 describe('MCPProxy', () => {
