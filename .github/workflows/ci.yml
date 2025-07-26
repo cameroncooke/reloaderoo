@@ -9,35 +9,35 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20.x'  # LTS version
         cache: 'npm'
-    
+
     - name: Install dependencies
       run: npm ci
-    
+
     - name: Build project
       run: npm run build
-    
+
     - name: Run linting
       run: npm run lint
-    
+
     - name: Run CI test suite (fast & reliable)
       run: npm run test:ci
-    
+
     - name: Test CLI functionality
       run: |
         # Test basic CLI commands work
         node dist/bin/reloaderoo.js --version
         node dist/bin/reloaderoo.js --help
         node dist/bin/reloaderoo.js info
-        
+
         # Test inspect commands
         timeout 10s node dist/bin/reloaderoo.js inspect list-tools -- node test-server-sdk.js || echo "CLI inspect works"

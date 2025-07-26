@@ -2,27 +2,27 @@
   "mcpServers": {
     "test-direct": {
       "command": "node",
-      "args": ["/Volumes/Developer/Reloaderoo/test-server-sdk.js"]
+      "args": ["./test-server-sdk.js"]
     },
     "test-proxied": {
       "command": "node",
       "args": [
-        "/Volumes/Developer/Reloaderoo/dist/bin/reloaderoo.js",
+        "./dist/bin/reloaderoo.js",
         "--log-level", "debug",
         "--",
         "node",
-        "/Volumes/Developer/Reloaderoo/test-server-sdk.js"
+        "./test-server-sdk.js"
       ]
     },
     "test-inspector": {
       "command": "node",
       "args": [
-        "/Volumes/Developer/Reloaderoo/dist/bin/reloaderoo.js",
+        "./dist/bin/reloaderoo.js",
         "inspect", "mcp",
         "--log-level", "debug",
         "--",
         "node",
-        "/Volumes/Developer/Reloaderoo/test-server-sdk.js"
+        "./test-server-sdk.js"
       ]
     }
   }

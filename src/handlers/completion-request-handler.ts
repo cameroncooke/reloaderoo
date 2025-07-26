@@ -66,18 +66,17 @@ export class CompletionRequestHandler {
       );
     }
 
-    try {
-      // Note: Simplified forwarding - in a full implementation, 
-      // this would use proper MCP client sampling methods
-      throw new McpError(
-        ErrorCode.MethodNotFound,
-        'Sampling not yet supported'
-      );
-    } catch (error) {
-      logger.debug('Failed to process sampling request', { 
-        error: error instanceof Error ? error.message : 'Unknown error' 
-      }, 'PROXY-SAMPLING');
-      throw error;
-    }
+    // Note: Simplified forwarding - in a full implementation, 
+    // this would use proper MCP client sampling methods
+    const error = new McpError(
+      ErrorCode.MethodNotFound,
+      'Sampling not yet supported'
+    );
+
+    logger.debug('Failed to process sampling request', { 
+      error: error.message 
+    }, 'PROXY-SAMPLING');
+
+    throw error;
   }
 }

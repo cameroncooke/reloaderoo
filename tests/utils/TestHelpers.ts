@@ -46,7 +46,9 @@ export class TestHelpers {
     expect(response).not.toHaveProperty('result');
     
     if (expectedErrorMessage) {
-      expect((response as any).error.message).toContain(expectedErrorMessage);
+      expect(response).toHaveProperty('error');
+      const errorResponse = response as MCPMessage & { error: { message: string } };
+      expect(errorResponse.error.message).toContain(expectedErrorMessage);
     }
   }
 
@@ -83,7 +85,7 @@ export class TestHelpers {
    */
   static assertHasRestartServerTool(response: MCPResponse): void {
     this.assertToolsListResponse(response);
-    const toolNames = response.result.tools.map((tool: any) => tool.name);
+    const toolNames = response.result.tools.map((tool: { name: string }) => tool.name);
     expect(toolNames).toContain('restart_server');
   }
 
@@ -92,7 +94,7 @@ export class TestHelpers {
    */
   static assertHasTools(response: MCPResponse, expectedTools: string[]): void {
     this.assertToolsListResponse(response);
-    const toolNames = response.result.tools.map((tool: any) => tool.name);
+    const toolNames = response.result.tools.map((tool: { name: string }) => tool.name);
     
     for (const toolName of expectedTools) {
       expect(toolNames).toContain(toolName);
@@ -163,12 +165,15 @@ export class TestHelpers {
    * Wait for a specific log message to appear in process output
    */
   static async waitForLogMessage(
-    process: any, // ReloaderooProcess type
+    process: { getStderrOutput(): string[] },
     message: string,
     timeoutMs: number = 10000
   ): Promise<void> {
     return this.waitFor(
-      () => process.getStderrOutput().some((log: string) => log.includes(message)),
+      () => {
+        const stderr = process.getStderrOutput();
+        return Array.isArray(stderr) && stderr.some((log: string) => log.includes(message));
+      },
       timeoutMs,
       100
     );
@@ -178,7 +183,7 @@ export class TestHelpers {
    * Wait for process to be in running state
    */
   static async waitForProcessRunning(
-    process: any, // ReloaderooProcess type
+    process: { isRunning(): boolean },
     timeoutMs: number = 10000
   ): Promise<void> {
     return this.waitFor(
@@ -192,15 +197,18 @@ export class TestHelpers {
    * Wait for successful startup indication
    */
   static async waitForStartupSuccess(
-    process: any, // ReloaderooProcess type
+    process: { getStderrOutput(): string[] },
     timeoutMs: number = 15000
   ): Promise<void> {
     return this.waitFor(
-      () => process.getStderrOutput().some((log: string) => 
-        log.includes('Reloaderoo started successfully') ||
-        log.includes('started successfully') ||
-        log.includes('Server started')
-      ),
+      () => {
+        const stderr = process.getStderrOutput();
+        return Array.isArray(stderr) && stderr.some((log: string) => 
+          log.includes('Reloaderoo started successfully') ||
+          log.includes('started successfully') ||
+          log.includes('Server started')
+        );
+      },
       timeoutMs,
       200
     );
@@ -210,16 +218,19 @@ export class TestHelpers {
    * Wait for successful restart completion
    */
   static async waitForRestartSuccess(
-    process: any, // ReloaderooProcess type
+    process: { getStderrOutput(): string[] },
     timeoutMs: number = 15000
   ): Promise<void> {
     return this.waitFor(
-      () => process.getStderrOutput().some((log: string) => 
-        log.includes('restarted successfully') ||
-        log.includes('restart completed') ||
-        log.includes('Child MCP server restarted') ||
-        log.includes('Connected to child MCP server successfully')
-      ),
+      () => {
+        const stderr = process.getStderrOutput();
+        return Array.isArray(stderr) && stderr.some((log: string) => 
+          log.includes('restarted successfully') ||
+          log.includes('restart completed') ||
+          log.includes('Child MCP server restarted') ||
+          log.includes('Connected to child MCP server successfully')
+        );
+      },
       timeoutMs,
       200
     );
@@ -229,15 +240,18 @@ export class TestHelpers {
    * Wait for child server to be fully ready for requests
    */
   static async waitForChildServerReady(
-    process: any, // ReloaderooProcess type
+    process: { getStderrOutput(): string[] },
     timeoutMs: number = 15000
   ): Promise<void> {
     return this.waitFor(
-      () => process.getStderrOutput().some((log: string) => 
-        log.includes('Connected to child MCP server successfully') ||
-        log.includes('Mirrored child capabilities') ||
-        log.includes('child capabilities')
-      ),
+      () => {
+        const stderr = process.getStderrOutput();
+        return Array.isArray(stderr) && stderr.some((log: string) => 
+          log.includes('Connected to child MCP server successfully') ||
+          log.includes('Mirrored child capabilities') ||
+          log.includes('child capabilities')
+        );
+      },
       timeoutMs,
       200
     );
@@ -247,7 +261,7 @@ export class TestHelpers {
    * Generate a unique test identifier
    */
   static generateTestId(): string {
-    return `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `test_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   /**

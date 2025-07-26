@@ -35,11 +35,16 @@ function createClientConfig(
   args: string[],
   options: any
 ): SimpleClientConfig {
+  const timeout = parseInt(options.timeout);
+  if (isNaN(timeout) || timeout <= 0) {
+    throw new Error(`Invalid timeout value: ${options.timeout}`);
+  }
+
   return {
     command,
     args,
     workingDirectory: options.workingDir || process.cwd(),
-    timeout: parseInt(options.timeout) || 30000
+    timeout: timeout || 30000
   };
 }
 
@@ -221,13 +226,23 @@ Examples:
         }
 
         // Create proxy configuration
+        const timeout = parseInt(options.timeout);
+        if (isNaN(timeout) || timeout <= 0) {
+          throw new Error(`Invalid timeout value: ${options.timeout}`);
+        }
+
+        const restartLimit = 3;
+        if (restartLimit < 0 || restartLimit > 10) {
+          throw new Error(`Invalid restart limit: ${restartLimit}`);
+        }
+
         const proxyConfig: ProxyConfig = {
           childCommand: child.command,
           childArgs: child.args,
           workingDirectory: options.workingDir || process.cwd(),
           environment: process.env as Record<string, string>,
-          restartLimit: 3,
-          operationTimeout: parseInt(options.timeout) || 30000,
+          restartLimit,
+          operationTimeout: timeout || 30000,
           logLevel: options.logLevel as any,
           autoRestart: true,
           restartDelay: 1000

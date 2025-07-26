@@ -102,8 +102,8 @@ export class ReloaderooProcess {
       throw new Error(`Failed to start Reloaderoo process: ${error.message}`);
     });
 
-    // Give process time to start
-    await setTimeoutPromise(1000);
+    // Wait for process to be ready
+    await this.waitForProcessReady();
   }
 
   /**
@@ -208,6 +208,23 @@ export class ReloaderooProcess {
    */
   getAccumulatedStdout(): string {
     return this.accumulatedStdout;
+  }
+
+  /**
+   * Wait for process to be ready with timeout
+   */
+  private async waitForProcessReady(): Promise<void> {
+    const startTime = Date.now();
+    const timeout = 5000;
+    
+    while (Date.now() - startTime < timeout) {
+      if (this.process && !this.process.killed) {
+        return;
+      }
+      await setTimeoutPromise(50);
+    }
+    
+    throw new Error('Process failed to start within timeout');
   }
 
   /**
