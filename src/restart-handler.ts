@@ -93,28 +93,25 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
   async handleRestartTool(request: JSONRPCRequest): Promise<JSONRPCResponse> {
     const requestId = String(request.id);
     
+    // Validate this is actually a restart_server request (before any state changes)
+    if (!isRestartServerRequest(request)) {
+      return this.createErrorResponse(request.id!, 
+        PROXY_ERROR_RESPONSES.INVALID_RESTART_CONFIG,
+        'Request is not a valid restart_server tool call');
+    }
+
+    // Extract tool call parameters
+    const toolCall = request.params as CallToolRequest['params'];
+    const restartParams = toolCall.arguments as RestartServerRequest;
+
+    // Atomically check rate limits and set restart flag
+    const rateLimitError = this.checkRateLimitAndSetFlag(requestId);
+    if (rateLimitError) {
+      return rateLimitError;
+    }
+
     try {
-      // Validate this is actually a restart_server request
-      if (!isRestartServerRequest(request)) {
-        return this.createErrorResponse(request.id!, 
-          PROXY_ERROR_RESPONSES.INVALID_RESTART_CONFIG,
-          'Request is not a valid restart_server tool call');
-      }
-
-      // Extract tool call parameters
-      const toolCall = request.params as CallToolRequest['params'];
-      const restartParams = toolCall.arguments as RestartServerRequest;
-
-      // Apply rate limiting
-      const rateLimitError = this.checkRateLimit(requestId);
-      if (rateLimitError) {
-        return rateLimitError;
-      }
-
-      // Set restart flag immediately after rate limit check passes (atomic)
-      this.state.isRestartInProgress = true;
-
-      // Validate restart request parameters
+      // Validate restart request parameters (now inside try block to ensure finally runs)
       const validation = this.validateRestartRequest(restartParams);
       if (!validation.valid) {
         return this.createErrorResponse(request.id!,
@@ -122,7 +119,7 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
           validation.error || 'Invalid restart request');
       }
 
-      // Execute the restart operation (flag will be reset in finally block)
+      // Execute the restart operation
       const result = await this.executeRestart(restartParams);
       
       // Send success notifications
@@ -236,7 +233,8 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
       return result;
 
     } finally {
-      this.state.isRestartInProgress = false;
+      // Note: isRestartInProgress flag is reset by handleRestartTool's finally block
+      // to ensure proper lifecycle management across the entire operation
     }
   }
 
@@ -378,8 +376,8 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
            arg.includes('|') || arg.includes('>') || arg.includes('<');
   }
 
-  /** Apply rate limiting to restart requests. */
-  private checkRateLimit(requestId: string): JSONRPCResponse | null {
+  /** Apply rate limiting and atomically set restart flag if checks pass. */
+  private checkRateLimitAndSetFlag(requestId: string): JSONRPCResponse | null {
     const now = Date.now();
 
     // Check if restart is already in progress (atomic check)
@@ -404,7 +402,8 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
         `Please wait ${remaining} seconds before requesting another restart`);
     }
 
-    // Track this request
+    // All checks passed - atomically set the restart flag and track request
+    this.state.isRestartInProgress = true;
     this.state.concurrentRequests.add(requestId);
     return null;
   }
