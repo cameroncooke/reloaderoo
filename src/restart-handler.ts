@@ -117,13 +117,12 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
       // Validate restart request parameters
       const validation = this.validateRestartRequest(restartParams);
       if (!validation.valid) {
-        this.state.isRestartInProgress = false; // Reset flag on validation failure
         return this.createErrorResponse(request.id!,
           PROXY_ERROR_RESPONSES.INVALID_RESTART_CONFIG,
           validation.error || 'Invalid restart request');
       }
 
-      // Execute the restart operation (flag will be reset in executeRestart finally block)
+      // Execute the restart operation (flag will be reset in finally block)
       const result = await this.executeRestart(restartParams);
       
       // Send success notifications
@@ -141,13 +140,12 @@ export class RestartHandler extends EventEmitter<RestartHandlerEvents> {
       
       this.emit('restart-failed', error as Error, this.state.operationCount);
       
-      // Reset restart flag on error
-      this.state.isRestartInProgress = false;
-      
       return this.createErrorResponse(request.id!,
         PROXY_ERROR_RESPONSES.RESTART_FAILED,
         error instanceof Error ? error.message : 'Unknown restart error');
     } finally {
+      // Always reset the restart flag to prevent permanent blocking
+      this.state.isRestartInProgress = false;
       this.state.concurrentRequests.delete(requestId);
     }
   }
