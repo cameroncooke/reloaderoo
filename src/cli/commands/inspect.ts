@@ -35,7 +35,7 @@ function createClientConfig(
   args: string[],
   options: any
 ): SimpleClientConfig {
-  const timeout = parseInt(options.timeout);
+  const timeout = parseInt(options.timeout || '30000', 10);
   if (isNaN(timeout) || timeout <= 0) {
     throw new Error(`Invalid timeout value: ${options.timeout}`);
   }
@@ -226,7 +226,7 @@ Examples:
         }
 
         // Create proxy configuration
-        const timeout = parseInt(options.timeout);
+        const timeout = parseInt(options.timeout || '30000', 10);
         if (isNaN(timeout) || timeout <= 0) {
           throw new Error(`Invalid timeout value: ${options.timeout}`);
         }
