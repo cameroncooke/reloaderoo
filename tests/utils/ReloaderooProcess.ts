@@ -28,8 +28,9 @@ export class ReloaderooProcess {
   private readonly receivedMessages: MCPMessage[] = [];
   private readonly receivedStderr: string[] = [];
   private accumulatedStdout: string = ''; // Accumulate all stdout for CLI commands
-  private messagePromises: Map<string, { resolve: (msg: MCPMessage) => void; reject: (error: Error) => void }> = new Map();
+  private messagePromises: Map<string, { resolve: (msg: MCPMessage) => void; reject: (error: Error) => void; filter: (msg: MCPMessage) => boolean }> = new Map();
   private exitPromise: Promise<number> | null = null;
+  private processError: Error | null = null;
 
   constructor(options: ReloaderooOptions = {}) {
     this.options = {
@@ -99,7 +100,12 @@ export class ReloaderooProcess {
 
     // Handle process errors
     this.process.on('error', (error) => {
-      throw new Error(`Failed to start Reloaderoo process: ${error.message}`);
+      this.processError = new Error(`Failed to start Reloaderoo process: ${error.message}`);
+      // Reject all pending message promises
+      for (const [id, pending] of this.messagePromises) {
+        pending.reject(this.processError);
+        this.messagePromises.delete(id);
+      }
     });
 
     // Wait for process to be ready
@@ -110,6 +116,10 @@ export class ReloaderooProcess {
    * Send an MCP message to the process
    */
   async sendMessage(message: MCPMessage): Promise<void> {
+    if (this.processError) {
+      throw this.processError;
+    }
+    
     if (!this.process?.stdin) {
       throw new Error('Process not started or stdin not available');
     }
@@ -122,6 +132,10 @@ export class ReloaderooProcess {
    * Wait for a specific message matching the filter
    */
   async waitForMessage(filter: (msg: MCPMessage) => boolean, timeout?: number): Promise<MCPMessage> {
+    if (this.processError) {
+      throw this.processError;
+    }
+    
     const timeoutMs = timeout || this.options.timeout!;
     
     // Check if message already received
@@ -146,7 +160,8 @@ export class ReloaderooProcess {
             resolve(msg);
           }
         },
-        reject
+        reject,
+        filter
       });
     });
   }
@@ -218,6 +233,9 @@ export class ReloaderooProcess {
     const timeout = 5000;
     
     while (Date.now() - startTime < timeout) {
+      if (this.processError) {
+        throw this.processError;
+      }
       if (this.process && !this.process.killed) {
         return;
       }
@@ -285,8 +303,10 @@ export class ReloaderooProcess {
   private resolveMessagePromise(message: MCPMessage): void {
     const entries = Array.from(this.messagePromises.entries());
     for (const [id, promise] of entries) {
-      promise.resolve(message);
-      this.messagePromises.delete(id);
+      if (promise.filter(message)) {
+        promise.resolve(message);
+        this.messagePromises.delete(id);
+      }
     }
   }
 }
