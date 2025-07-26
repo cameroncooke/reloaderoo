@@ -10,6 +10,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  PingRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
 class TestMCPServer {
@@ -22,12 +25,15 @@ class TestMCPServer {
       {
         capabilities: {
           tools: {},
+          resources: {},
         },
       }
     );
 
     this.randomTools = this.generateRandomTools();
     this.setupToolHandlers();
+    this.setupResourceHandlers();
+    this.setupPingHandler();
     this.setupErrorHandlers();
   }
 
@@ -216,15 +222,33 @@ class TestMCPServer {
       // Check base tools first
       switch (name) {
         case 'echo':
+          if (!args.message) {
+            return {
+              content: [{
+                type: 'text',
+                text: 'Missing required parameter: message'
+              }],
+              isError: true
+            };
+          }
           return {
             content: [{
               type: 'text',
-              text: `Echo: ${args.message || 'No message provided'}`
+              text: `Echo: ${args.message}`
             }]
           };
 
         case 'add':
-          const sum = (args.a || 0) + (args.b || 0);
+          if (args.a === undefined || args.b === undefined) {
+            return {
+              content: [{
+                type: 'text',
+                text: 'Missing required parameters: a and b are both required'
+              }],
+              isError: true
+            };
+          }
+          const sum = args.a + args.b;
           return {
             content: [{
               type: 'text',
@@ -233,10 +257,19 @@ class TestMCPServer {
           };
 
         case 'greet':
+          if (!args.name) {
+            return {
+              content: [{
+                type: 'text',
+                text: 'Missing required parameter: name'
+              }],
+              isError: true
+            };
+          }
           return {
             content: [{
               type: 'text',
-              text: `Hello, ${args.name || 'Unknown'}! Welcome to the test MCP server.`
+              text: `Hello, ${args.name}! Welcome to the test MCP server.`
             }]
           };
       }
@@ -254,6 +287,131 @@ class TestMCPServer {
       }
 
       throw new Error(`Unknown tool: ${name}`);
+    });
+  }
+
+  setupResourceHandlers() {
+    // List available resources
+    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+      return {
+        resources: [
+          {
+            uri: 'file://config.json',
+            name: 'Configuration File',
+            description: 'Server configuration in JSON format',
+            mimeType: 'application/json'
+          },
+          {
+            uri: 'file://logs/server.log',
+            name: 'Server Log',
+            description: 'Latest server log entries',
+            mimeType: 'text/plain'
+          },
+          {
+            uri: 'memory://stats',
+            name: 'Server Statistics',
+            description: 'Real-time server performance statistics',
+            mimeType: 'application/json'
+          },
+          {
+            uri: 'api://weather/current',
+            name: 'Current Weather',
+            description: 'Current weather data from API',
+            mimeType: 'application/json'
+          }
+        ]
+      };
+    });
+
+    // Read specific resource
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      const { uri } = request.params;
+
+      switch (uri) {
+        case 'file://config.json':
+          return {
+            contents: [
+              {
+                uri: 'file://config.json',
+                mimeType: 'application/json',
+                text: JSON.stringify({
+                  server: {
+                    name: 'test-mcp-server',
+                    version: '1.0.0',
+                    port: 3000,
+                    debug: true
+                  },
+                  features: {
+                    tools: true,
+                    resources: true,
+                    prompts: false
+                  }
+                }, null, 2)
+              }
+            ]
+          };
+
+        case 'file://logs/server.log':
+          return {
+            contents: [
+              {
+                uri: 'file://logs/server.log',
+                mimeType: 'text/plain',
+                text: [
+                  `[${new Date().toISOString()}] INFO: Server started successfully`,
+                  `[${new Date(Date.now() - 60000).toISOString()}] DEBUG: Processing request`,
+                  `[${new Date(Date.now() - 120000).toISOString()}] INFO: Configuration loaded`,
+                  `[${new Date(Date.now() - 180000).toISOString()}] INFO: Resources initialized`
+                ].join('\n')
+              }
+            ]
+          };
+
+        case 'memory://stats':
+          return {
+            contents: [
+              {
+                uri: 'memory://stats',
+                mimeType: 'application/json',
+                text: JSON.stringify({
+                  uptime: process.uptime(),
+                  memory: process.memoryUsage(),
+                  cpu: process.cpuUsage(),
+                  timestamp: new Date().toISOString(),
+                  requests: Math.floor(Math.random() * 1000),
+                  errors: Math.floor(Math.random() * 10)
+                }, null, 2)
+              }
+            ]
+          };
+
+        case 'api://weather/current':
+          return {
+            contents: [
+              {
+                uri: 'api://weather/current',
+                mimeType: 'application/json',
+                text: JSON.stringify({
+                  location: 'San Francisco, CA',
+                  temperature: Math.round(15 + Math.random() * 10),
+                  humidity: Math.round(60 + Math.random() * 20),
+                  condition: ['sunny', 'cloudy', 'partly cloudy', 'foggy'][Math.floor(Math.random() * 4)],
+                  timestamp: new Date().toISOString()
+                }, null, 2)
+              }
+            ]
+          };
+
+        default:
+          throw new Error(`Resource not found: ${uri}`);
+      }
+    });
+  }
+
+  setupPingHandler() {
+    // Handle ping requests - MCP ping should return empty object
+    this.server.setRequestHandler(PingRequestSchema, async () => {
+      return {};
     });
   }
 

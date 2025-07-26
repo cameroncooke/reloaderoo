@@ -44,7 +44,6 @@ const CLI_OUTPUT = {
     'get-prompt',
     'server-info',
     'ping',
-    'mcp'
   ],
   INFO_SECTIONS: [
     `reloaderoo v${packageJson.version}`,
@@ -134,7 +133,7 @@ describe('CLI Commands E2E', () => {
       await reloaderoo.start();
       
       // Wait for a more complete help output pattern
-      const helpOutput = await reloaderoo.waitForTextOutput('Start MCP inspection server');
+      const helpOutput = await reloaderoo.waitForTextOutput('Inspect and debug MCP servers');
       const exitCode = await reloaderoo.waitForExit();
 
       // Check for key inspect commands in the help output
@@ -142,7 +141,7 @@ describe('CLI Commands E2E', () => {
       expect(helpOutput).toContain('call-tool');
       expect(helpOutput).toContain('server-info');
       expect(helpOutput).toContain('ping');
-      expect(helpOutput).toContain('mcp');
+      expect(helpOutput).toContain('call-tool');
       TestHelpers.assertSuccessExitCode(exitCode);
     });
   });
@@ -273,21 +272,7 @@ describe('CLI Commands E2E', () => {
       // Process may exit with error due to test server issues, but option should be accepted
     }, 8000);
 
-    it('should accept raw output option', async () => {
-      reloaderoo = new ReloaderooProcess({
-        args: ['inspect', 'server-info', '--raw', '--', 'node', 'test-server-sdk.js'],
-        timeout: 5000 // Shorter timeout for test
-      });
-
-      await reloaderoo.start();
-      
-      // Wait for process to exit or for some output  
-      const exitCode = await reloaderoo.waitForExit();
-      const stderrOutput = reloaderoo.getStderrOutput().join('');
-      
-      // Main assertion: should not contain 'unknown option' error
-      expect(stderrOutput).not.toContain('unknown option');
-      // Process may exit with error due to test server issues, but option should be accepted
-    }, 8000);
+    // Removed test for --raw option as it's no longer needed
+    // CLI now always outputs raw MCP responses
   });
 });

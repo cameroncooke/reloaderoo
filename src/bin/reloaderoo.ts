@@ -72,7 +72,7 @@ program
 Examples:
   $ reloaderoo proxy -- node server.js                    # Run as MCP proxy server
   $ reloaderoo inspect list-tools -- node server.js       # List tools via CLI
-  $ reloaderoo inspect mcp -- node server.js              # Run as MCP inspection server
+  $ reloaderoo inspect server-info -- node server.js      # Get server info via CLI
   $ reloaderoo inspect call-tool get_weather --params '{"location": "London"}' -- node server.js
   $ reloaderoo info                                        # Show system info
 
