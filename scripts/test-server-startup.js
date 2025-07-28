@@ -126,10 +126,8 @@ async function runTests() {
   }
 }
 
-// Run tests if this file is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  runTests().catch((error) => {
-    console.error('Test runner error:', error);
-    process.exit(1);
-  });
-}
+// Run tests - these scripts are designed to be executed directly
+runTests().catch((error) => {
+  console.error('Test runner error:', error);
+  process.exit(1);
+});
