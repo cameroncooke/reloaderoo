@@ -44,6 +44,15 @@ jobs:
     - name: Run type checking
       run: npm run lint
 
+    - name: Test CLI functionality
+      run: npm run test:cli-startup
+
+    - name: Test MCP server startup
+      run: npm run test:server-startup
+
+    - name: Test dual-mode behavior
+      run: npm run test:dual-mode
+
     - name: Generate coverage report
       run: npm run test:coverage
       if: matrix.node-version == '20.x' && matrix.os == 'ubuntu-latest'
@@ -94,19 +103,36 @@ jobs:
 
     - name: Test proxy mode functionality
       run: |
-        # Start proxy in background and test it responds
-        timeout 15s node dist/bin/reloaderoo.js -- node test-server-sdk.js &
-        PROXY_PID=$!
-        # Wait for proxy to be ready (with timeout)
-        for i in {1..10}; do
-          if lsof -p $PROXY_PID 2>/dev/null | grep -q LISTEN; then
-            echo "Proxy is ready"
-            break
-          fi
-          sleep 1
-        done
-        kill $PROXY_PID 2>/dev/null || true
-        echo "Proxy mode test completed"
+        echo "Testing proxy mode functionality..."
+        
+        # Test proxy startup with deterministic output
+        timeout 5s node dist/bin/reloaderoo.js -- node test-server-sdk.js 2>&1 | tee proxy_output.log || true
+        
+        # Check for proxy startup messages
+        if grep -q "Starting reloaderoo MCP proxy server" proxy_output.log; then
+          echo "✅ Proxy mode startup message found"
+        else
+          echo "ERROR: Proxy mode startup message not found"
+          echo "=== Proxy Output ==="
+          cat proxy_output.log
+          echo "==================="
+          exit 1
+        fi
+        
+        if grep -q "Starting Reloaderoo" proxy_output.log; then
+          echo "✅ Proxy initialization completed"
+        else
+          echo "ERROR: Proxy initialization not found"
+          echo "=== Proxy Output ==="
+          cat proxy_output.log
+          echo "==================="
+          exit 1
+        fi
+        
+        echo "✅ Proxy mode functionality test completed"
+        
+        # Clean up
+        rm -f proxy_output.log
 
   performance-test:
     name: Performance benchmarks

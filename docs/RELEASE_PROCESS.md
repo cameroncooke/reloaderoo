@@ -257,8 +257,14 @@ npm link                    # Link for global testing
 reloaderoo --help          # Test CLI mode
 reloaderoo -- node test.js # Test MCP server mode
 
+# Test startup functionality (new)
+npm run test:cli-startup    # Test CLI help commands
+npm run test:server-startup # Test MCP server startup
+npm run test:dual-mode      # Test mode detection logic
+
 # Pre-push verification
 npm run build && npm run lint && npm test
+npm run test:cli-startup && npm run test:server-startup && npm run test:dual-mode
 ```
 
 ### Testing Specific Modes
