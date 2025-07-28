@@ -40,6 +40,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "postbuild": "chmod +x dist/bin/reloaderoo.js",
     "dev": "tsc --watch",
     "test": "npm run test:ci",
     "test:watch": "vitest",

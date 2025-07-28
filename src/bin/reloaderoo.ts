@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /**
  * reloaderoo CLI entry point
  * 
