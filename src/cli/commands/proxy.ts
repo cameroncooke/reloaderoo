@@ -228,9 +228,10 @@ Examples:
         
         // Start the proxy
         if (!options.quiet) {
-          process.stderr.write('Starting reloaderoo...\n');
+          process.stderr.write('Starting reloaderoo MCP proxy server...\n');
           process.stderr.write(`Child: ${childCommand} ${childArgs.join(' ')}\n`);
           process.stderr.write(`Working Directory: ${proxyConfig.workingDirectory}\n`);
+          process.stderr.write('\n💡 For CLI tools and debugging, use: reloaderoo --help or reloaderoo inspect --help\n');
         }
         
         const proxyInstance = new MCPProxy(proxyConfig);
