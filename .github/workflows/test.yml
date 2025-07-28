@@ -32,6 +32,9 @@ jobs:
     - name: Build project
       run: npm run build
 
+    - name: Link package globally for CLI testing
+      run: npm link
+
     - name: Run unit tests
       run: npm run test:unit
 
@@ -87,9 +90,12 @@ jobs:
     - name: Build project
       run: npm run build
 
+    - name: Link package globally for CLI testing
+      run: npm link
+
     - name: Test with SDK server
       run: |
-        timeout 30s node dist/bin/reloaderoo.js inspect list-tools -- node test-server-sdk.js || exit_code=$?
+        timeout 30s reloaderoo inspect list-tools -- node test-server-sdk.js || exit_code=$?
         if [ ${exit_code:-0} -eq 124 ]; then
           echo "Test timed out as expected"
           exit 0
@@ -106,7 +112,7 @@ jobs:
         echo "Testing proxy mode functionality..."
         
         # Test proxy startup with deterministic output
-        timeout 5s node dist/bin/reloaderoo.js -- node test-server-sdk.js 2>&1 | tee proxy_output.log || true
+        timeout 5s reloaderoo -- node test-server-sdk.js 2>&1 | tee proxy_output.log || true
         
         # Check for proxy startup messages
         if grep -q "Starting reloaderoo MCP proxy server" proxy_output.log; then
@@ -155,14 +161,17 @@ jobs:
     - name: Build project
       run: npm run build
 
+    - name: Link package globally for CLI testing
+      run: npm link
+
     - name: Run performance tests
       run: |
         # Test startup time
         echo "Testing startup time..."
-        time timeout 10s node dist/bin/reloaderoo.js inspect server-info -- node test-server-sdk.js
+        time timeout 10s reloaderoo inspect server-info -- node test-server-sdk.js
 
         # Test memory usage
         echo "Testing memory usage..."
-        timeout 10s node --max-old-space-size=256 dist/bin/reloaderoo.js inspect ping -- node test-server-sdk.js
+        timeout 10s reloaderoo inspect ping -- node test-server-sdk.js
 
         echo "Performance tests completed"

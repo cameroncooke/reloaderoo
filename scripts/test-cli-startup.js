@@ -6,20 +6,14 @@
  */
 
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const rootDir = dirname(__dirname);
-const binPath = join(rootDir, 'dist', 'bin', 'reloaderoo.js');
 
 /**
  * Run a command and return promise with result
+ * Uses the globally linked reloaderoo command to test the actual npm package experience
  */
 function runCommand(args = []) {
   return new Promise((resolve, reject) => {
-    const child = spawn('node', [binPath, ...args], {
+    const child = spawn('reloaderoo', args, {
       stdio: ['ignore', 'pipe', 'pipe']
     });
     

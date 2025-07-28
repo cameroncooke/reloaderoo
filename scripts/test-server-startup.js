@@ -6,21 +6,13 @@
  */
 
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const rootDir = dirname(__dirname);
-const binPath = join(rootDir, 'dist', 'bin', 'reloaderoo.js');
 
 /**
  * Run server startup test with timeout
  */
 function testServerStartup(timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
-    const child = spawn('node', [
-      binPath,
+    const child = spawn('reloaderoo', [
       '--',
       'node',
       '-e',
