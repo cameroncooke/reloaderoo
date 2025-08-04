@@ -56,7 +56,8 @@ function createInspectionAction<T>(
         const transport = new StdioClientTransport({
           command: childInfo.command,
           args: childInfo.args,
-          cwd: options.workingDir || process.cwd()
+          cwd: options.workingDir || process.cwd(),
+          env: process.env as Record<string, string>
         });
         
         client = new Client({
