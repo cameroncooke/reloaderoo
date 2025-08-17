@@ -18,6 +18,7 @@
 import { Command } from 'commander';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { getEnvironmentConfig } from '../config.js';
 import { createProxyCommand } from '../cli/commands/proxy.js';
 import { createInspectCommand } from '../cli/commands/inspect.js';
@@ -31,7 +32,7 @@ function getVersion(): string {
     // For built files: dist/bin/reloaderoo.js -> need to go up 2 levels to reach package.json
     const currentDir = typeof __dirname !== 'undefined'
       ? __dirname
-      : dirname(new URL(import.meta.url).pathname);
+      : dirname(fileURLToPath(import.meta.url));
 
     // Try multiple potential package.json locations to be safe
     const possiblePaths = [
