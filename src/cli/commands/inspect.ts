@@ -31,9 +31,9 @@ function createInspectionAction<T>(
   operation: (client: Client, ...args: any[]) => Promise<T>
 ) {
   return async (...args: any[]) => {
-    // Extract options (always the last argument from commander)
-    const options = args[args.length - 1];
-    const commandArgs = args.slice(0, -1); // Remove options from args
+    // Extract options (second-to-last argument) and command args from commander
+    const options = args[args.length - 2];
+    const commandArgs = args.slice(0, -2); // Remove options and command from args
     
     // Parse child command from process.argv
     const childInfo = parseChildCommand(process.argv);
@@ -57,7 +57,8 @@ function createInspectionAction<T>(
           command: childInfo.command,
           args: childInfo.args,
           cwd: options.workingDir || process.cwd(),
-          env: process.env as Record<string, string>
+          env: process.env as Record<string, string>,
+          stderr: options.quiet ? 'ignore' : 'inherit'
         });
         
         client = new Client({
@@ -71,7 +72,7 @@ function createInspectionAction<T>(
         await client.connect(transport);
 
         // Execute the operation
-        const result = await operation(client, ...commandArgs);
+        const result = await operation(client, ...commandArgs, options);
         
         // Output the raw result
         console.log(JSON.stringify(result, null, 2));
@@ -117,7 +118,8 @@ Examples:
   const addCommonOptions = (cmd: Command) => {
     return cmd
       .option('-w, --working-dir <dir>', 'Working directory for the child process')
-      .option('-t, --timeout <ms>', 'Operation timeout in milliseconds', '30000');
+      .option('-t, --timeout <ms>', 'Operation timeout in milliseconds', '30000')
+      .option('-q, --quiet', 'Suppress child process stderr output');
   };
 
   // Server info command
