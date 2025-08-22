@@ -190,11 +190,20 @@ Subcommands:
   ping [options]                   Check server connectivity
   mcp [options]                    Start MCP inspection server (exposes debug tools as MCP server)
 
+Common Options (available for all subcommands):
+  -w, --working-dir <dir>          Working directory for the child process
+  -t, --timeout <ms>               Operation timeout in milliseconds (default: 30000)
+  -q, --quiet                      Suppress child process stderr output (get clean JSON)
+
 Examples:
   reloaderoo inspect list-tools -- node server.js
   reloaderoo inspect call-tool get_weather --params '{"location": "London"}' -- node server.js
   reloaderoo inspect server-info -- node server.js
   reloaderoo inspect mcp -- node server.js        # Start MCP inspection server
+  
+  # Get clean JSON output without server logs
+  reloaderoo inspect list-tools --quiet -- node server.js
+  reloaderoo inspect call-tool echo --quiet --params '{"message":"test"}' -- node server.js
 ```
 
 ### **Info Command (Diagnostics)**
@@ -245,6 +254,7 @@ CLI mode provides direct command-line access to MCP servers without requiring cl
 - Raw JSON output shows exact MCP protocol requests/responses
 - No proxy layer or client interpretation
 - Perfect for understanding what's actually happening at the protocol level
+- Use `--quiet` flag to suppress server logs and get clean JSON for scripting
 
 ### 📝 **Direct CLI Commands** (One-shot execution)
 Execute single commands and get immediate results:
@@ -261,6 +271,10 @@ reloaderoo inspect server-info -- node my-server.js
 
 # Check server connectivity
 reloaderoo inspect ping -- node my-server.js
+
+# Get clean JSON output without server logs (perfect for scripting)
+reloaderoo inspect list-tools --quiet -- node my-server.js
+reloaderoo inspect call-tool echo --quiet --params '{"message":"hello"}' -- node my-server.js
 ```
 
 ### 🔧 **MCP Inspection Server** (Persistent CLI mode for MCP clients)
@@ -373,25 +387,32 @@ Perfect for CI/CD, testing scripts, and automation workflows:
 #!/bin/bash
 # Example: Test script for your MCP server
 
-# Check if server is healthy
-if reloaderoo inspect ping -- node my-server.js; then
+# Check if server is healthy (use --quiet for clean output)
+if reloaderoo inspect ping --quiet -- node my-server.js >/dev/null 2>&1; then
   echo "✅ Server is healthy"
 else
   echo "❌ Server health check failed"
   exit 1
 fi
 
-# Test specific functionality
+# Test specific functionality with clean JSON output
 echo "Testing echo tool..."
-result=$(reloaderoo inspect call-tool echo --params '{"message":"test"}' -- node my-server.js)
+result=$(reloaderoo inspect call-tool echo --quiet --params '{"message":"test"}' -- node my-server.js)
 
-# Parse and validate JSON response
-if echo "$result" | jq -e '.success' >/dev/null; then
+# Parse and validate JSON response (no server logs to interfere)
+if echo "$result" | jq -e '.content[0].text' >/dev/null; then
   echo "✅ Echo tool test passed"
+  echo "Response: $(echo "$result" | jq -r '.content[0].text')"
 else
   echo "❌ Echo tool test failed"
+  echo "Raw response: $result"
   exit 1
 fi
+
+# List tools and count them
+echo "Checking available tools..."
+tools_count=$(reloaderoo inspect list-tools --quiet -- node my-server.js | jq '.tools | length')
+echo "✅ Found $tools_count tools available"
 ```
 
 ## 🚨 Troubleshooting
