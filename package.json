@@ -1,6 +1,6 @@
 {
   "name": "reloaderoo",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "type": "module",
   "description": "Hot-reload your MCP servers without restarting your AI coding assistant. Works excellently with VSCode MCP, well with Claude Code. A transparent development proxy for the Model Context Protocol that enables seamless server restarts during development.",
   "keywords": [
