@@ -38,8 +38,9 @@ function createInspectionAction<T>(
     let client: Client | undefined;
     let transport: StdioClientTransport | undefined;
 
-    // Set a timeout for the entire operation
-    const timeout = parseInt(options.timeout || '30000', 10);
+    // Validate and set timeout for the entire operation
+    const parsedTimeout = parseInt(options.timeout || '30000', 10);
+    const timeout = Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 30000;
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout)
     );
@@ -78,12 +79,20 @@ function createInspectionAction<T>(
         error: error instanceof Error ? error.message : String(error)
       };
       console.error(JSON.stringify(errorOutput, null, 2));
-      process.exit(1);
+      // Set exit code but don't exit yet - let finally block run for cleanup
+      process.exitCode = 1;
     } finally {
-      // Cleanup: close client and wait for child process to terminate
+      // Cleanup: close client first, then transport if needed
       if (client) {
         try {
           await client.close();
+        } catch {
+          // Ignore cleanup errors
+        }
+      } else if (transport) {
+        // If transport was created but client wasn't connected, close transport directly
+        try {
+          await transport.close();
         } catch {
           // Ignore cleanup errors
         }
@@ -93,7 +102,7 @@ function createInspectionAction<T>(
       // doesn't wait for the process to actually exit, which can leave orphans
       // if we call process.exit() immediately.
       await new Promise(resolve => setTimeout(resolve, 100));
-      process.exit(0);
+      process.exit(process.exitCode ?? 0);
     }
   };
 }
