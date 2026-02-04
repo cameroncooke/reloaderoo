@@ -41,9 +41,10 @@ function createInspectionAction<T>(
     // Validate and set timeout for the entire operation
     const parsedTimeout = parseInt(options.timeout || '30000', 10);
     const timeout = Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 30000;
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout)
-    );
+    let timeoutId: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout);
+    });
 
     try {
       const operationPromise = (async () => {
@@ -82,6 +83,10 @@ function createInspectionAction<T>(
       // Set exit code but don't exit yet - let finally block run for cleanup
       process.exitCode = 1;
     } finally {
+      // Clear the timeout to prevent unhandled rejection race condition
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       // Cleanup: close client first, then transport if needed
       if (client) {
         try {
