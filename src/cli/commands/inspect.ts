@@ -36,24 +36,25 @@ function createInspectionAction<T>(
     };
 
     let client: Client | undefined;
+    let transport: StdioClientTransport | undefined;
 
     // Set a timeout for the entire operation
     const timeout = parseInt(options.timeout || '30000', 10);
-    const timeoutPromise = new Promise((_, reject) => 
+    const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout)
     );
 
     try {
       const operationPromise = (async () => {
         // Create MCP client transport with stdio
-        const transport = new StdioClientTransport({
+        transport = new StdioClientTransport({
           command: childInfo.command,
           args: childInfo.args,
           cwd: options.workingDir || process.cwd(),
           env: process.env as Record<string, string>,
           stderr: options.quiet ? 'ignore' : 'inherit'
         });
-        
+
         client = new Client({
           name: 'reloaderoo-inspector',
           version: '1.0.0'
@@ -79,7 +80,7 @@ function createInspectionAction<T>(
       console.error(JSON.stringify(errorOutput, null, 2));
       process.exit(1);
     } finally {
-      // Cleanup
+      // Cleanup: close client and wait for child process to terminate
       if (client) {
         try {
           await client.close();
@@ -87,7 +88,11 @@ function createInspectionAction<T>(
           // Ignore cleanup errors
         }
       }
-      // Transport cleanup is handled by client.close()
+      // Give the child process time to terminate after the abort signal.
+      // The MCP SDK's StdioClientTransport.close() sends an abort signal but
+      // doesn't wait for the process to actually exit, which can leave orphans
+      // if we call process.exit() immediately.
+      await new Promise(resolve => setTimeout(resolve, 100));
       process.exit(0);
     }
   };
