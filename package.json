@@ -39,6 +39,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "prepare": "npm run build",
     "build": "tsc",
     "postbuild": "chmod +x dist/bin/reloaderoo.js",
     "dev": "tsc --watch",
