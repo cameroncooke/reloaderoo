@@ -14,12 +14,15 @@ import {
   // Tools
   ListToolsRequestSchema,
   CallToolRequestSchema,
-  // Prompts  
+  ToolListChangedNotificationSchema,
+  // Prompts
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
+  PromptListChangedNotificationSchema,
   // Resources
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  ResourceListChangedNotificationSchema,
   // Completion
   CompleteRequestSchema,
   // Sampling
@@ -213,6 +216,13 @@ export class MCPProxy {
     // Mirror child capabilities
     await this.mirrorChildCapabilities();
 
+    // Register handlers for the child's dynamic list-changed notifications only
+    // after the initial mirror completes. On restart, mirrorChildCapabilities()
+    // calls notifyCapabilityChanges() which forwards a single tools/list_changed
+    // upstream; if we registered earlier, a list_changed emitted by the child
+    // during our listTools() round-trip would cause a duplicate forward.
+    this.registerChildNotificationForwarders();
+
     logger.info('Connected to child MCP server successfully');
   }
 
@@ -315,6 +325,62 @@ export class MCPProxy {
     } catch (error) {
       logger.debug('Error sending notifications', { error });
     }
+  }
+
+  /**
+   * Subscribe to dynamic capability-change notifications from the child server.
+   * When the child registers or removes a tool (or resource/prompt) at runtime,
+   * refresh the corresponding cache and forward the notification upstream so
+   * the parent client can re-discover.
+   */
+  private registerChildNotificationForwarders(): void {
+    if (!this.childClient) return;
+
+    this.childClient.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
+      logger.debug('child sent tools/list_changed; refreshing cache', undefined, 'RELOADEROO');
+      try {
+        const r = await this.childClient!.listTools();
+        this.childTools = r.tools || [];
+        this.toolHandler.updateChildTools(this.childTools);
+      } catch (error) {
+        // If we can't refresh the cache (e.g. the child transport was closed
+        // mid-restart), skip the upstream forward. Forwarding with a stale or
+        // empty cache would make the parent re-fetch and see wrong data; the
+        // restart path's own notifyCapabilityChanges() will notify the parent
+        // once the new mirror completes.
+        logger.warn('Failed to refresh child tools after list_changed; skipping upstream forward', { error });
+        return;
+      }
+      try {
+        await this.server.notification({
+          method: MCP_PROTOCOL.NOTIFICATIONS.TOOLS_LIST_CHANGED
+        });
+      } catch (error) {
+        logger.debug('Failed to forward tools/list_changed upstream', { error });
+      }
+    });
+
+    this.childClient.setNotificationHandler(ResourceListChangedNotificationSchema, async () => {
+      logger.debug('child sent resources/list_changed; forwarding', undefined, 'RELOADEROO');
+      try {
+        await this.server.notification({
+          method: MCP_PROTOCOL.NOTIFICATIONS.RESOURCES_LIST_CHANGED
+        });
+      } catch (error) {
+        logger.debug('Failed to forward resources/list_changed upstream', { error });
+      }
+    });
+
+    this.childClient.setNotificationHandler(PromptListChangedNotificationSchema, async () => {
+      logger.debug('child sent prompts/list_changed; forwarding', undefined, 'RELOADEROO');
+      try {
+        await this.server.notification({
+          method: MCP_PROTOCOL.NOTIFICATIONS.PROMPTS_LIST_CHANGED
+        });
+      } catch (error) {
+        logger.debug('Failed to forward prompts/list_changed upstream', { error });
+      }
+    });
   }
 
   /**
